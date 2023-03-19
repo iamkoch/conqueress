@@ -1,0 +1,10 @@
+go 1.18
+
+use (
+	./conqueress
+	./conqueress-mongo
+	./sample_domain
+	./tests
+	./conqueress-firestore
+	ensure
+)
