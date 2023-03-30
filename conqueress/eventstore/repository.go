@@ -1,10 +1,15 @@
 package eventstore
 
 import (
+	"errors"
 	"github.com/iamkoch/conqueress"
 	"github.com/iamkoch/conqueress/domain"
 	"github.com/iamkoch/conqueress/guid"
 	"reflect"
+)
+
+var (
+	ErrConcurrencyException = errors.New("concurrency exception")
 )
 
 type IEventStore interface {

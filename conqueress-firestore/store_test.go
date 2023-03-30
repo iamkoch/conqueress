@@ -6,7 +6,9 @@ import (
 	cqrs "github.com/iamkoch/conqueress"
 	"github.com/iamkoch/conqueress/eventstore"
 	"github.com/iamkoch/conqueress/guid"
+	enshur "github.com/iamkoch/ensure/stateless"
 	. "github.com/smartystreets/goconvey/convey"
+	"github.com/stretchr/testify/require"
 	"reflect"
 	"sample_domain"
 	"testing"
@@ -28,6 +30,149 @@ func (t *testPublisher) Publish(event cqrs.Event) {
 func (t *testPublisher) Handle(event cqrs.Event) error {
 	t.capturedEvents = append(t.capturedEvents, event)
 	return nil
+}
+
+func TestConcurrencyBehaviour(t *testing.T) {
+	var (
+		aggregateId = guid.New()
+		es          eventstore.IEventStore
+		err         error
+	)
+	enshur.That("saving the same entity twice with the same expected version causes concurrency failures", func(s *enshur.Scenario) {
+		s.Background("Given an available firestore event store", func() {
+			tm := NewTypeMap().Add(sample_domain.InventoryItemCreated{}).Add(sample_domain.InventoryItemRenamed{})
+
+			es, err = NewFirestoreEventStore(context.Background(), tm)
+			require.Nil(t, err, "should have failed to create event store")
+
+		})
+
+		s.Given("events saved", func() {
+
+			err = es.SaveEvents(
+				reflect.TypeOf(sample_domain.InventoryItem{}).Name(),
+				aggregateId,
+				[]cqrs.Event{
+					sample_domain.InventoryItemCreated{BaseEvent: cqrs.DefaultBaseEvent(), Id: guid.New(), Name: "test"},
+				},
+				-1,
+			)
+
+			require.Nil(t, err, "save should not have failed")
+		})
+
+		s.When("try to save again at same version", func() {
+
+			err = es.SaveEvents(
+				reflect.TypeOf(sample_domain.InventoryItem{}).Name(),
+				aggregateId,
+				[]cqrs.Event{
+					sample_domain.InventoryItemCreated{BaseEvent: cqrs.DefaultBaseEvent(), Id: guid.New(), Name: "test"},
+				},
+				-1,
+			)
+		})
+
+		s.Then("should fail with concurrency error", func() {
+			require.NotNil(t, err, "save should not have failed")
+			require.ErrorIs(t, err, eventstore.ErrConcurrencyException)
+		})
+
+		s.When("try to save again at version one higher", func() {
+
+			err = es.SaveEvents(
+				reflect.TypeOf(sample_domain.InventoryItem{}).Name(),
+				aggregateId,
+				[]cqrs.Event{
+					sample_domain.InventoryItemCreated{BaseEvent: cqrs.DefaultBaseEvent(), Id: guid.New(), Name: "test"},
+				},
+				1,
+			)
+		})
+
+		s.Then("should fail with concurrency error", func() {
+			require.NotNil(t, err, "save should not have failed")
+			require.ErrorIs(t, err, eventstore.ErrConcurrencyException)
+		})
+	}, t)
+}
+
+func TestVersionsAndConcurrency(t *testing.T) {
+	var (
+		aggregateId = guid.New()
+		es          eventstore.IEventStore
+		err         error
+		aggEvents   []cqrs.Event
+		lastVersion int
+	)
+	enshur.That("saving the same entity with variable event lengths causes correct version mismatch comparison", func(s *enshur.Scenario) {
+		s.Background("Given an available firestore event store", func() {
+			tm := NewTypeMap().Add(sample_domain.InventoryItemCreated{}).Add(sample_domain.InventoryItemRenamed{})
+
+			es, err = NewFirestoreEventStore(context.Background(), tm)
+			require.Nil(t, err, "should have failed to create event store")
+
+		})
+
+		s.Given("events saved", func() {
+
+			err = es.SaveEvents(
+				reflect.TypeOf(sample_domain.InventoryItem{}).Name(),
+				aggregateId,
+				[]cqrs.Event{
+					sample_domain.InventoryItemCreated{BaseEvent: cqrs.DefaultBaseEvent(), Id: guid.New(), Name: "test"},
+					sample_domain.InventoryItemRenamed{BaseEvent: cqrs.DefaultBaseEvent(), Id: guid.New(), NewName: "test2"},
+					sample_domain.InventoryItemRenamed{BaseEvent: cqrs.DefaultBaseEvent(), Id: guid.New(), NewName: "test3"},
+				},
+				-1,
+			)
+
+			require.Nil(t, err, "save should not have failed")
+		})
+
+		s.When("loading", func() {
+			aggEvents = es.GetEventsForAggregate(aggregateId)
+		})
+
+		s.Then("should have 3 events", func() {
+			require.Equal(t, 3, len(aggEvents))
+		})
+
+		s.And("events should be types", func() {
+			require.IsType(t, sample_domain.InventoryItemCreated{}, aggEvents[0])
+			require.IsType(t, sample_domain.InventoryItemRenamed{}, aggEvents[1])
+			require.IsType(t, sample_domain.InventoryItemRenamed{}, aggEvents[2])
+		})
+
+		s.And("events should contain correct info", func() {
+			require.Equal(t, "test", aggEvents[0].(sample_domain.InventoryItemCreated).Name)
+			require.Equal(t, "test2", aggEvents[1].(sample_domain.InventoryItemRenamed).NewName)
+			require.Equal(t, "test3", aggEvents[2].(sample_domain.InventoryItemRenamed).NewName)
+		})
+
+		s.And("should have correct versions", func() {
+			for i, e := range aggEvents {
+				lastVersion = e.Version()
+				require.Equal(t, i, e.Version(), fmt.Sprintf("version mismatch at index %d", i))
+			}
+		})
+
+		s.And("when you try to save again at wrong version", func() {
+			err = es.SaveEvents(
+				reflect.TypeOf(sample_domain.InventoryItem{}).Name(),
+				aggregateId,
+				[]cqrs.Event{
+					sample_domain.InventoryItemRenamed{BaseEvent: cqrs.DefaultBaseEvent(), Id: guid.New(), NewName: "test22"},
+				},
+				lastVersion+1,
+			)
+		})
+
+		s.Then("should fail with concurrency error", func() {
+			require.NotNil(t, err, "save should not have failed")
+			require.ErrorIs(t, err, eventstore.ErrConcurrencyException)
+		})
+	}, t)
 }
 
 func TestConcurrency(t *testing.T) {

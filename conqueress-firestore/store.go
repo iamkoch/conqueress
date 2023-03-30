@@ -97,7 +97,7 @@ func dereferenceIfPtr(value interface{}) interface{} {
 	}
 }
 
-func envelopeToEvent(t reflect.Type, e *Envelope) (cqrs.Event, error) {
+func envelopeToEvent(t reflect.Type, e *dbEvent) (cqrs.Event, error) {
 	v := reflect.New(t)
 
 	// reflected pointer
@@ -106,7 +106,9 @@ func envelopeToEvent(t reflect.Type, e *Envelope) (cqrs.Event, error) {
 	// Unmarshal to reflected struct pointer
 	json.Unmarshal([]byte(e.Body), newP)
 
-	return dereferenceIfPtr(newP).(cqrs.Event), nil
+	event := dereferenceIfPtr(newP).(cqrs.Event)
+	event.WithVersion(e.Version)
+	return event, nil
 }
 
 type dbEvent struct {
@@ -124,6 +126,7 @@ type dbEvent struct {
 type dbAggregate struct {
 	Id      string `firestore:"id"`
 	Version int    `firestore:"version"`
+	IsNew   bool   `firestore:"-"`
 }
 
 func tryGetExistingAggregate(
@@ -158,15 +161,14 @@ func (f firestoreEventStore) SaveEvents(aggName string, aggregateId guid.Guid, e
 	err := f.client.RunTransaction(context.TODO(), func(ctx context.Context, transaction *firestore.Transaction) error {
 
 		getDefaultAggregate := func() *dbAggregate {
-			return &dbAggregate{Id: aggregateId.String(), Version: 0}
+			return &dbAggregate{Id: aggregateId.String(), Version: 0, IsNew: true}
 		}
 		dbAgg, e := tryGetExistingAggregate(ctx, ac, aggregateId, getDefaultAggregate)
 
 		e = checkConcurrency(expectedVersion, dbAgg)
 
 		if e != nil {
-			fmt.Println("concurrency error")
-			return e
+			return eventstore.ErrConcurrencyException
 		}
 
 		ev := expectedVersion
@@ -178,13 +180,14 @@ func (f firestoreEventStore) SaveEvents(aggName string, aggregateId guid.Guid, e
 				return e
 			}
 
-			e = transaction.Set(ec.Doc(aggregateId.String()), dbe)
+			e = transaction.Set(ec.Doc(event.MsgId().String()), dbe)
 			if e != nil {
 				fmt.Println("Error saving event ", e)
 				return e
 			}
 		}
 
+		dbAgg.Version = ev
 		e = transaction.Set(ac.Doc(aggregateId.String()), dbAgg)
 
 		return e
@@ -200,9 +203,20 @@ func (f firestoreEventStore) SaveEvents(aggName string, aggregateId guid.Guid, e
 }
 
 func checkConcurrency(expectedVersion int, a *dbAggregate) error {
-	isNewAggregate := expectedVersion == -1
+	if aggNil := a == nil; aggNil {
+		return fmt.Errorf("aggregate is nil")
+	}
+
+	if a.IsNew {
+		if expectedVersion == -1 {
+			return nil
+		} else {
+			return fmt.Errorf("aggregate is new but version doesn't support expectation")
+		}
+	}
+
 	hasVersionMismatch := a.Version != expectedVersion
-	if hasVersionMismatch && !isNewAggregate {
+	if hasVersionMismatch {
 		return errors.New("concurrency error")
 	}
 	return nil
@@ -214,7 +228,7 @@ func (f firestoreEventStore) GetEventsForAggregate(aggregateId guid.Guid) []cqrs
 	iter := q.Documents(context.TODO())
 	defer iter.Stop()
 
-	envelopes := make([]Envelope, 0)
+	envelopes := make([]dbEvent, 0)
 
 	for {
 		doc, err := iter.Next()
@@ -227,7 +241,7 @@ func (f firestoreEventStore) GetEventsForAggregate(aggregateId guid.Guid) []cqrs
 			panic("couldn't get doc")
 		}
 
-		var env Envelope
+		var env dbEvent
 
 		if err = doc.DataTo(&env); err != nil {
 			fmt.Println("Error getting data ", err)
@@ -275,7 +289,7 @@ func NewTypeMap() *TypeMap {
 	return &TypeMap{typeMap: make(map[string]reflect.Type)}
 }
 
-func (tm *TypeMap) Add(t interface{}) *TypeMap {
+func (tm *TypeMap) Add(t any) *TypeMap {
 	tm.typeMap[reflect.TypeOf(t).Name()] = reflect.TypeOf(t)
 	return tm
 }

@@ -5,11 +5,16 @@ import "github.com/iamkoch/conqueress/guid"
 type Event interface {
 	MsgId() guid.Guid
 	WithVersion(v int)
+	Version() int
 }
 
 type BaseEvent struct {
 	MessageId string `json:"message_id"`
 	Ver       int    `json:"version"`
+}
+
+func (b *BaseEvent) Version() int {
+	return b.Ver
 }
 
 func (b *BaseEvent) MsgId() guid.Guid {

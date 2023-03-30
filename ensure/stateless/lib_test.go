@@ -1,8 +1,9 @@
-package stateful
+package stateless
 
 import (
 	"context"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"testing"
 )
 
@@ -27,7 +28,8 @@ func TestFullScenario(t *testing.T) {
 		})
 
 		s.Then("I should see something", func() {
-			assert.Equal(t, true, aThing)
+			require.Equal(t, true, aThing)
+			require.Equal(t, false, tornDown)
 		}).Teardown("teardown", testCtx, func(ctx context.Context) {
 			tornDown = true
 		})
