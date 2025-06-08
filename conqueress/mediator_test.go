@@ -3,7 +3,7 @@ package conqueress
 import (
 	"fmt"
 	"github.com/iamkoch/conqueress/guid"
-	enshur "github.com/iamkoch/ensure/stateless"
+	"github.com/iamkoch/ensure"
 	"github.com/stretchr/testify/assert"
 	"testing"
 	"time"
@@ -16,7 +16,7 @@ func TestCommandDispatch(t *testing.T) {
 		resp                 = make(chan CommandProcessingError)
 		commandDispatchError error
 	)
-	enshur.That("published commands are dispatched without delay when induce is false", func(s *enshur.Scenario) {
+	ensure.That("published commands are dispatched without delay when induce is false", func(s *ensure.Scenario) {
 		s.Given("a command dispatcher with induce delay false", func() {
 			mediator = NewMediator(false)
 		})
@@ -59,7 +59,7 @@ func TestCommandHandlerReturnsError(t *testing.T) {
 		resp                 = make(chan CommandProcessingError)
 		commandDispatchError error
 	)
-	enshur.That("command handlers that return an error bubble up the error", func(s *enshur.Scenario) {
+	ensure.That("command handlers that return an error bubble up the error", func(s *ensure.Scenario) {
 		s.Given("a command dispatcher with induce delay false", func() {
 			mediator = NewMediator(false)
 		})
@@ -106,7 +106,7 @@ func TestPublish(t *testing.T) {
 		handler1 = &TestEvtHandler{}
 		handler2 = &TestEvtHandler{}
 	)
-	enshur.That("published events are sent to all handlers", func(s *enshur.Scenario) {
+	ensure.That("published events are sent to all handlers", func(s *ensure.Scenario) {
 		s.Given("a mediator", func() {
 			mediator = NewMediator(false)
 		})
@@ -150,6 +150,10 @@ func (t TestEvent) MsgId() guid.Guid {
 
 func (t TestEvent) WithVersion(v int) {
 	//TODO implement me
+	panic("implement me")
+}
+
+func (t TestEvent) Version() int {
 	panic("implement me")
 }
 

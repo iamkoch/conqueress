@@ -33,13 +33,13 @@ func TestApplication(t *testing.T) {
 
 	Convey("Create inventory item", t, func() {
 		m := cqrs.NewMediator(false)
-		storage := inmemory.NewInMemoryEventStore(m)
+		storage := inmemory.NewInMemoryEventStore[guid.Guid{}](m)
 		repo := eventstore.NewRepository[*sample_domain.InventoryItem](storage, sample_domain.DefaultInventoryItem)
 
 		commands := sample_domain.NewInventoryCommandHandler(repo)
 		handler := newTestPublisher()
-		m.RegisterCommandHandler(reflect.TypeOf(sample_domain.CreateInventoryItem{}), commands.HandleCreateInventoryItem)
-		m.RegisterEventHandler(reflect.TypeOf(sample_domain.InventoryItemCreated{}), handler.Handle)
+		cqrs.RegisterCommandHandler[sample_domain.CreateInventoryItem](m, commands.HandleCreateInventoryItem)
+		cqrs.RegisterEventHandlers[sample_domain.InventoryItemCreated](m, handler.Handle)
 
 		actualId := guid.New()
 		m.Dispatch(sample_domain.NewCreateInventoryItem(actualId, "something"), nil)

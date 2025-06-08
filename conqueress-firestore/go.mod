@@ -1,6 +1,6 @@
 module github.com/iamkoch/conqueress/firestore
 
-go 1.18
+go 1.23.0
 
 require (
 	cloud.google.com/go/firestore v1.6.1

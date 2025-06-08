@@ -6,7 +6,7 @@ import (
 	cqrs "github.com/iamkoch/conqueress"
 	"github.com/iamkoch/conqueress/eventstore"
 	"github.com/iamkoch/conqueress/guid"
-	enshur "github.com/iamkoch/ensure/stateless"
+	"github.com/iamkoch/ensure"
 	. "github.com/smartystreets/goconvey/convey"
 	"github.com/stretchr/testify/require"
 	"reflect"
@@ -38,7 +38,7 @@ func TestConcurrencyBehaviour(t *testing.T) {
 		es          eventstore.IEventStore
 		err         error
 	)
-	enshur.That("saving the same entity twice with the same expected version causes concurrency failures", func(s *enshur.Scenario) {
+	ensure.That("saving the same entity twice with the same expected version causes concurrency failures", func(s *ensure.Scenario) {
 		s.Background("Given an available firestore event store", func() {
 			tm := NewTypeMap().Add(sample_domain.InventoryItemCreated{}).Add(sample_domain.InventoryItemRenamed{})
 
@@ -53,7 +53,10 @@ func TestConcurrencyBehaviour(t *testing.T) {
 				reflect.TypeOf(sample_domain.InventoryItem{}).Name(),
 				aggregateId,
 				[]cqrs.Event{
-					sample_domain.InventoryItemCreated{BaseEvent: cqrs.DefaultBaseEvent(), Id: guid.New(), Name: "test"},
+					cqrs.NewEvent[sample_domain.InventoryItemCreated](func(s *sample_domain.InventoryItemCreated) {
+						s.Id = guid.New()
+						s.Name = "test"
+					}),
 				},
 				-1,
 			)
@@ -67,7 +70,10 @@ func TestConcurrencyBehaviour(t *testing.T) {
 				reflect.TypeOf(sample_domain.InventoryItem{}).Name(),
 				aggregateId,
 				[]cqrs.Event{
-					sample_domain.InventoryItemCreated{BaseEvent: cqrs.DefaultBaseEvent(), Id: guid.New(), Name: "test"},
+					cqrs.NewEvent[sample_domain.InventoryItemCreated](func(s *sample_domain.InventoryItemCreated) {
+						s.Id = guid.New()
+						s.Name = "test"
+					}),
 				},
 				-1,
 			)
@@ -84,7 +90,10 @@ func TestConcurrencyBehaviour(t *testing.T) {
 				reflect.TypeOf(sample_domain.InventoryItem{}).Name(),
 				aggregateId,
 				[]cqrs.Event{
-					sample_domain.InventoryItemCreated{BaseEvent: cqrs.DefaultBaseEvent(), Id: guid.New(), Name: "test"},
+					cqrs.NewEvent[sample_domain.InventoryItemCreated](func(s *sample_domain.InventoryItemCreated) {
+						s.Id = guid.New()
+						s.Name = "test"
+					}),
 				},
 				1,
 			)
@@ -105,7 +114,7 @@ func TestVersionsAndConcurrency(t *testing.T) {
 		aggEvents   []cqrs.Event
 		lastVersion int
 	)
-	enshur.That("saving the same entity with variable event lengths causes correct version mismatch comparison", func(s *enshur.Scenario) {
+	ensure.That("saving the same entity with variable event lengths causes correct version mismatch comparison", func(s *ensure.Scenario) {
 		s.Background("Given an available firestore event store", func() {
 			tm := NewTypeMap().Add(sample_domain.InventoryItemCreated{}).Add(sample_domain.InventoryItemRenamed{})
 
@@ -120,9 +129,18 @@ func TestVersionsAndConcurrency(t *testing.T) {
 				reflect.TypeOf(sample_domain.InventoryItem{}).Name(),
 				aggregateId,
 				[]cqrs.Event{
-					sample_domain.InventoryItemCreated{BaseEvent: cqrs.DefaultBaseEvent(), Id: guid.New(), Name: "test"},
-					sample_domain.InventoryItemRenamed{BaseEvent: cqrs.DefaultBaseEvent(), Id: guid.New(), NewName: "test2"},
-					sample_domain.InventoryItemRenamed{BaseEvent: cqrs.DefaultBaseEvent(), Id: guid.New(), NewName: "test3"},
+					cqrs.NewEvent[sample_domain.InventoryItemCreated](func(s *sample_domain.InventoryItemCreated) {
+						s.Id = guid.New()
+						s.Name = "test"
+					}),
+					cqrs.NewEvent[sample_domain.InventoryItemRenamed](func(s *sample_domain.InventoryItemRenamed) {
+						s.Id = guid.New()
+						s.NewName = "test2"
+					}),
+					cqrs.NewEvent[sample_domain.InventoryItemRenamed](func(s *sample_domain.InventoryItemRenamed) {
+						s.Id = guid.New()
+						s.NewName = "test3"
+					}),
 				},
 				-1,
 			)
@@ -162,7 +180,10 @@ func TestVersionsAndConcurrency(t *testing.T) {
 				reflect.TypeOf(sample_domain.InventoryItem{}).Name(),
 				aggregateId,
 				[]cqrs.Event{
-					sample_domain.InventoryItemRenamed{BaseEvent: cqrs.DefaultBaseEvent(), Id: guid.New(), NewName: "test22"},
+					cqrs.NewEvent[sample_domain.InventoryItemRenamed](func(s *sample_domain.InventoryItemRenamed) {
+						s.Id = guid.New()
+						s.NewName = "test22"
+					}),
 				},
 				lastVersion+1,
 			)

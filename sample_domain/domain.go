@@ -15,7 +15,10 @@ type InventoryItem struct {
 func NewInventoryItem(id guid.Guid, name string) *InventoryItem {
 	i := DefaultInventoryItem()
 
-	i.ApplyChange(InventoryItemCreated{cqrs.DefaultBaseEvent(), id, name})
+	i.ApplyChange(cqrs.NewEvent[InventoryItemCreated](func(e *InventoryItemCreated) {
+		e.Id = id
+		e.Name = name
+	}))
 
 	return i
 }
@@ -57,9 +60,8 @@ func (ii *InventoryItem) handleEvent(e cqrs.Event) {
 }
 
 func (ii *InventoryItem) Rename(name string) {
-	ii.ApplyChange(InventoryItemRenamed{
-		BaseEvent: cqrs.DefaultBaseEvent(),
-		Id:        ii.id,
-		NewName:   name,
-	})
+	ii.ApplyChange(cqrs.NewEvent[InventoryItemRenamed](func(e *InventoryItemRenamed) {
+		e.Id = ii.Id()
+		e.NewName = name
+	}))
 }

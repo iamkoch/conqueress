@@ -1,6 +1,6 @@
 module fw/tests
 
-go 1.18
+go 1.23.0
 
 require (
 	github.com/smartystreets/goconvey v1.7.2

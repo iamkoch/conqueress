@@ -2,7 +2,7 @@ package conqueress
 
 import (
 	"errors"
-	log "github.com/sirupsen/logrus"
+	"log/slog"
 	"math/rand"
 	"reflect"
 	"time"
@@ -43,10 +43,10 @@ func (m *Mediator) processCommands() {
 		select {
 		case cmdReq := <-m.commandQueue:
 			cmd := cmdReq.cmd
-			log.WithFields(log.Fields{
-				"command": cmd,
-				"type":    reflect.TypeOf(cmd),
-			}).Debug("Processing command")
+			slog.With(
+				"command", cmd,
+				"type", reflect.TypeOf(cmd),
+			).Debug("Processing command")
 			resp := cmdReq.synchronousResponse
 			handler, _ := m.commandHandlers[reflect.TypeOf(cmd)]
 			if m.induceDelay {
@@ -54,11 +54,11 @@ func (m *Mediator) processCommands() {
 			}
 
 			result := handler(cmd)
-			log.WithFields(log.Fields{
-				"command": cmd,
-				"type":    reflect.TypeOf(cmd),
-				"result":  result,
-			}).Debug("Command processed")
+			slog.With(
+				"command", cmd,
+				"type", reflect.TypeOf(cmd),
+				"result", result,
+			).Debug("Command processed")
 			if resp != nil {
 				resp <- result
 			}
@@ -108,9 +108,9 @@ func (m *Mediator) RegisterCommandHandler(cmdType reflect.Type, handler CommandH
 	if _, exists := m.commandHandlers[cmdType]; exists {
 		return errors.New("command handler already registered")
 	}
-	log.WithFields(log.Fields{
-		"command": cmdType,
-	}).Info("Registering command handler")
+	slog.With(
+		"command", cmdType,
+	).Info("Registering command handler")
 	m.commandHandlers[cmdType] = handler
 	return nil
 }
@@ -133,12 +133,39 @@ func (m *Mediator) RegisterEventHandler(evtType reflect.Type, handler EventProce
 func (m *Mediator) Dispatch(cmd Command, syncResp chan CommandProcessingError) CommandSubmissionError {
 	of := reflect.TypeOf(cmd)
 	if _, ok := m.commandHandlers[of]; ok {
-		log.WithFields(log.Fields{
-			"type":    of,
-			"command": cmd,
-		}).Info("Dispatching command")
+		slog.With(
+			"type", of,
+			"command", cmd,
+		).Info("Dispatching command")
 		m.commandQueue <- queuedCommand{cmd, syncResp}
 		return nil
+	}
+	return errors.New("no handler registered")
+}
+
+func (m *Mediator) DispatchSync(cmd Command, syncResp chan CommandProcessingError) CommandSubmissionError {
+	of := reflect.TypeOf(cmd)
+	if _, ok := m.commandHandlers[of]; ok {
+		slog.With(
+			"type", of,
+			"command", cmd,
+		).Info("Dispatching command")
+		slog.With(
+			"command", cmd,
+			"type", reflect.TypeOf(cmd),
+		).Debug("Processing command")
+		handler, _ := m.commandHandlers[reflect.TypeOf(cmd)]
+		if m.induceDelay {
+			time.Sleep(time.Duration(1*rand.Intn(3)) * time.Second)
+		}
+
+		result := handler(cmd)
+		slog.With(
+			"command", cmd,
+			"type", reflect.TypeOf(cmd),
+			"result", result,
+		).Debug("Command processed")
+		return result
 	}
 	return errors.New("no handler registered")
 }
@@ -158,14 +185,30 @@ func (m *Mediator) Publish(evt Event) error {
 	return errors.New("no processor registered")
 }
 
+func (m *Mediator) PublishSync(evt Event) error {
+	if processors, ok := m.eventProcessors[reflect.TypeOf(evt)]; ok {
+		for _, processor := range processors {
+			func(p EventProcessor) {
+				if m.induceDelay {
+					time.Sleep(time.Duration(rand.Intn(10)) * time.Second) // Have a variable degree of eventual consistency
+				}
+				p(evt)
+			}(processor)
+		}
+		return nil
+	}
+	return errors.New("no processor registered")
+}
+
 type CommandProcessingError error
 type CommandSubmissionError error
 
 type CommandDispatcher interface {
-	Dispatch(e Command,
-		synchronousResponse chan CommandProcessingError) CommandSubmissionError
+	Dispatch(e Command, synchronousResponse chan CommandProcessingError) CommandSubmissionError
+	DispatchSync(e Command) CommandSubmissionError
 }
 
 type EventPublisher interface {
 	Publish(e Event) error
+	PublishSync(e Event) error
 }

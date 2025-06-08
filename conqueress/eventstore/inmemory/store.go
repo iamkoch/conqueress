@@ -4,32 +4,31 @@ import (
 	"fmt"
 	cqrs "github.com/iamkoch/conqueress"
 	"github.com/iamkoch/conqueress/eventstore"
-	"github.com/iamkoch/conqueress/guid"
 )
 
-type inMemoryEventDescriptor struct {
+type inMemoryEventDescriptor[TID comparable] struct {
 	version   int
 	eventData cqrs.Event
-	id        guid.Guid
+	id        TID
 }
 
-type inMemoryEventStore struct {
+type inMemoryEventStore[TID comparable] struct {
 	publisher *cqrs.Mediator
-	current   map[guid.Guid][]inMemoryEventDescriptor
+	current   map[TID][]inMemoryEventDescriptor[TID]
 }
 
-func NewInMemoryEventStore(m *cqrs.Mediator) eventstore.IEventStore {
-	return &inMemoryEventStore{
+func NewInMemoryEventStore[TID comparable](m *cqrs.Mediator) eventstore.IGenericIDEventStore[TID] {
+	return &inMemoryEventStore[TID]{
 		m,
-		make(map[guid.Guid][]inMemoryEventDescriptor),
+		make(map[TID][]inMemoryEventDescriptor[TID]),
 	}
 }
 
-func (i inMemoryEventStore) SaveEvents(aggregateType string, aggregateId guid.Guid, events []cqrs.Event, expectedVersion int) error {
+func (i inMemoryEventStore[TID]) SaveEvents(aggregateType string, aggregateId TID, events []cqrs.Event, expectedVersion int) error {
 	eventDescriptors, ok := i.current[aggregateId]
 
 	if !ok {
-		eventDescriptors = []inMemoryEventDescriptor{}
+		eventDescriptors = []inMemoryEventDescriptor[TID]{}
 	} else if eventDescriptors[len(eventDescriptors)-1].version != expectedVersion && expectedVersion != -1 {
 		return fmt.Errorf("concurrency exception: %d != %d", eventDescriptors[len(eventDescriptors)-1].version, expectedVersion)
 	}
@@ -39,14 +38,14 @@ func (i inMemoryEventStore) SaveEvents(aggregateType string, aggregateId guid.Gu
 	for _, evt := range events {
 		ev++
 		evt.WithVersion(ev)
-		eventDescriptors = append(eventDescriptors, inMemoryEventDescriptor{
+		eventDescriptors = append(eventDescriptors, inMemoryEventDescriptor[TID]{
 			version:   ev,
 			eventData: evt,
 			id:        aggregateId,
 		})
 
 		// publish
-		err := i.publisher.Publish(evt)
+		err := i.publisher.PublishSync(evt)
 
 		if err != nil {
 			return fmt.Errorf("error publishing event: %v", err)
@@ -58,7 +57,7 @@ func (i inMemoryEventStore) SaveEvents(aggregateType string, aggregateId guid.Gu
 	return nil
 }
 
-func (i inMemoryEventStore) GetEventsForAggregate(aggregateId guid.Guid) []cqrs.Event {
+func (i inMemoryEventStore[TID]) GetEventsForAggregate(aggregateId TID) []cqrs.Event {
 	eventDescriptors, ok := i.current[aggregateId]
 	evs := make([]cqrs.Event, 0)
 	if !ok {

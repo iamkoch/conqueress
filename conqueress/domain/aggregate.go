@@ -12,26 +12,32 @@ type IAggregate interface {
 	ApplyChange(e cqrs.Event)
 }
 
-type AggregateRootBase struct {
+type IGenericIDAggregate[TID any] interface {
+	Id() TID
+	UncommittedEvents() []cqrs.Event
+	ApplyChange(e cqrs.Event)
+}
+
+type AggregateRootBase[TID any] struct {
 	_changes    []cqrs.Event
-	_id         guid.Guid
+	_id         TID
 	_version    int
 	_innerApply func(e cqrs.Event)
 }
 
-func (a *AggregateRootBase) SetId(id guid.Guid) {
+func (a *AggregateRootBase[TID]) SetId(id TID) {
 	a._id = id
 }
 
-func (a *AggregateRootBase) SetVersion(v int) {
+func (a *AggregateRootBase[TID]) SetVersion(v int) {
 	a._version = v
 }
 
-func (a *AggregateRootBase) SetInnerApply(ia func(e cqrs.Event)) {
+func (a *AggregateRootBase[TID]) SetInnerApply(ia func(e cqrs.Event)) {
 	a._innerApply = ia
 }
 
-func (a *AggregateRootBase) InnerApply(e cqrs.Event) {
+func (a *AggregateRootBase[TID]) InnerApply(e cqrs.Event) {
 	a._innerApply(e)
 }
 
@@ -39,17 +45,17 @@ type InnerApplier interface {
 	InnerApply(e cqrs.Event)
 }
 
-type DefaultAggregate interface {
-	SetBase(base AggregateRootBase)
+type DefaultAggregate[TID any] interface {
+	SetBase(base AggregateRootBase[TID])
 	GetHandler() func(e cqrs.Event)
 	SetInnerApply(ia func(e cqrs.Event))
 }
 
-func (a *AggregateRootBase) Id() guid.Guid {
+func (a *AggregateRootBase[TID]) Id() TID {
 	return a._id
 }
 
-func (a *AggregateRootBase) applyChangeInternal(e cqrs.Event, isNew bool) {
+func (a *AggregateRootBase[TID]) applyChangeInternal(e cqrs.Event, isNew bool) {
 	a.InnerApply(e)
 
 	if isNew {
@@ -57,24 +63,34 @@ func (a *AggregateRootBase) applyChangeInternal(e cqrs.Event, isNew bool) {
 	}
 }
 
-func (a *AggregateRootBase) ApplyChange(e cqrs.Event) {
+func (a *AggregateRootBase[TID]) ApplyChange(e cqrs.Event) {
 	a.applyChangeInternal(e, true)
 }
 
-func (a *AggregateRootBase) UncommittedEvents() []cqrs.Event {
+func (a *AggregateRootBase[TID]) UncommittedEvents() []cqrs.Event {
 	return a._changes
 }
 
-func NewAggregate() AggregateRootBase {
-	return AggregateRootBase{}
+func NewAggregate[TID any]() AggregateRootBase[TID] {
+	return AggregateRootBase[TID]{}
 }
 
 func New[T any]() *T {
 	n := new(T)
 	instance := reflect.New(reflect.TypeOf(n).Elem())
-	a := instance.Interface().(DefaultAggregate)
+	a := instance.Interface().(DefaultAggregate[guid.Guid])
 
-	a.SetBase(NewAggregate())
+	a.SetBase(NewAggregate[guid.Guid]())
+	a.SetInnerApply(a.GetHandler())
+	return reflect.ValueOf(a).Interface().(*T)
+}
+
+func NewWithID[T any, TID any]() *T {
+	n := new(T)
+	instance := reflect.New(reflect.TypeOf(n).Elem())
+	a := instance.Interface().(DefaultAggregate[TID])
+
+	a.SetBase(NewAggregate[TID]())
 	a.SetInnerApply(a.GetHandler())
 	return reflect.ValueOf(a).Interface().(*T)
 }
@@ -82,9 +98,9 @@ func New[T any]() *T {
 func GetDefaultAggregate[T any]() *T {
 	n := new(T)
 	instance := reflect.New(reflect.TypeOf(n).Elem())
-	a := instance.Interface().(DefaultAggregate)
+	a := instance.Interface().(DefaultAggregate[guid.Guid])
 
-	a.SetBase(NewAggregate())
+	a.SetBase(NewAggregate[guid.Guid]())
 	a.SetInnerApply(a.GetHandler())
 	return reflect.ValueOf(a).Interface().(*T)
 }
