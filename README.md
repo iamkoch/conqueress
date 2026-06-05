@@ -1,8 +1,7 @@
 # Conqueress
 
 A small CQRS and event-sourcing kit for Go in the ports-and-adapters style.
-Inspired by Greg Young's "simplest possible thing" talks and the C# pattern in
-[`iamkoch/platform`](https://github.com/iamkoch/platform/tree/main/libraries/IntelAgent.Framework).
+Inspired by Greg Young's "simplest possible thing" talks.
 
 ## What's here
 
@@ -180,9 +179,8 @@ CI runs the same command across the two actively supported Go releases
 
 ## Status
 
-Experimental. The API is being shaped by use in extracting a bind capability
-from a Spring service into Go. Pin to a commit SHA in your `go.mod` and
-update deliberately.
+Experimental. The API is still evolving. Pin to a commit SHA in your `go.mod`
+and update deliberately.
 
 ## Licence
 
