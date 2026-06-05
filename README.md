@@ -174,8 +174,9 @@ the same way.
 go test -race -count=1 ./...
 ```
 
-CI runs the same command across Go 1.23 and 1.24 on every push and pull
-request. See `.github/workflows/test.yml`.
+CI runs the same command across the two actively supported Go releases
+(currently 1.25 and 1.26) on every push and pull request. See
+`.github/workflows/test.yml`.
 
 ## Status
 
