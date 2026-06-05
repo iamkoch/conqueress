@@ -103,7 +103,7 @@ func TestAggregateRootBase_SetVersion(t *testing.T) {
 	base.SetVersion(version)
 
 	// Assert
-	assert.Equal(t, version, base._version)
+	assert.Equal(t, version, base.Version())
 }
 
 func TestAggregateRootBase_ApplyChange(t *testing.T) {
