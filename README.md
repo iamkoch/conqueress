@@ -70,6 +70,10 @@ type Item struct {
     name string
 }
 
+// Two one-line helpers per aggregate so domain.New[Item]() can construct it.
+func (i *Item) SetBase(b domain.AggregateRootBase[guid.Guid]) { i.AggregateRootBase = b }
+func (i *Item) GetHandler() func(cqrs.Event)                  { return i.handleEvent }
+
 type ItemCreated struct {
     *cqrs.BaseEvent
     Id   guid.Guid
@@ -82,8 +86,7 @@ type ItemRenamed struct {
 }
 
 func NewItem(id guid.Guid, name string) *Item {
-    item := &Item{AggregateRootBase: domain.NewAggregate[guid.Guid]()}
-    item.SetInnerApply(item.handleEvent)
+    item := domain.New[Item]()
     item.ApplyChange(cqrs.NewEvent[ItemCreated](func(e *ItemCreated) {
         e.Id = id
         e.Name = name
@@ -109,6 +112,9 @@ func (i *Item) Rename(name string) {
     }))
 }
 ```
+
+For aggregates with a non-`guid.Guid` ID, use `domain.NewWithID[Item, OrderID]()`
+and have `SetBase` accept the right base type.
 
 ### Compose a command handler
 
