@@ -1,7 +1,8 @@
 package guid
 
 import (
-	"github.com/pkg/errors"
+	"fmt"
+
 	"github.com/rs/xid"
 )
 
@@ -18,7 +19,7 @@ func New() Guid {
 func FromString(s string) (Guid, error) {
 	id, e := xid.FromString(s)
 	if e != nil {
-		return Empty, errors.Wrap(e, "invalid guid provided to FromString")
+		return Empty, fmt.Errorf("invalid guid provided to FromString: %w", e)
 	}
 	return Guid(id), nil
 }

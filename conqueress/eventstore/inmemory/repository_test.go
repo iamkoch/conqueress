@@ -1,21 +1,22 @@
 package inmemory
 
 import (
+	"reflect"
+	"testing"
+
 	cqrs "github.com/iamkoch/conqueress"
 	"github.com/iamkoch/conqueress/domain"
 	"github.com/iamkoch/conqueress/eventstore"
 	"github.com/iamkoch/conqueress/guid"
 	. "github.com/smartystreets/goconvey/convey"
-	"reflect"
-	"testing"
 )
 
 type User struct {
-	domain.AggregateRootBase
+	domain.AggregateRootBase[guid.Guid]
 	name string
 }
 
-func (u *User) SetBase(base domain.AggregateRootBase) {
+func (u *User) SetBase(base domain.AggregateRootBase[guid.Guid]) {
 	u.AggregateRootBase = base
 }
 
@@ -25,29 +26,25 @@ func (u *User) GetHandler() func(e cqrs.Event) {
 
 type UserCreated struct {
 	*cqrs.BaseEvent
-	id   guid.Guid
-	name string
+	Id   guid.Guid
+	Name string
 }
 
 func (u *User) handleEvent(e cqrs.Event) {
 	switch evt := e.(type) {
 	case UserCreated:
-		u.SetId(evt.id)
+		u.SetId(evt.Id)
 		u.SetVersion(evt.Ver)
-		u.name = evt.name
+		u.name = evt.Name
 	}
-}
-
-func NewUser2() *User {
-	return domain.New[User]()
 }
 
 func NewUser() *User {
-	u := User{
-		AggregateRootBase: domain.NewAggregate(),
+	u := &User{
+		AggregateRootBase: domain.NewAggregate[guid.Guid](),
 	}
 	u.SetInnerApply(u.handleEvent)
-	return &u
+	return u
 }
 
 func TestRepository(t *testing.T) {
@@ -59,19 +56,21 @@ func TestRepository(t *testing.T) {
 		}
 		m := cqrs.NewMediator(false)
 		storage := NewInMemoryEventStore[guid.Guid](m)
-		repo := eventstore.NewRepository[*User](storage, domain.GetDefaultAggregate[User])
-		m.RegisterEventHandler(reflect.TypeOf(UserCreated{}), h)
+		repo := eventstore.NewGenericIDRepository[*User, guid.Guid](storage, NewUser)
+		_ = m.RegisterEventHandler(reflect.TypeOf(UserCreated{}), h)
 
-		agg := NewUser2()
+		agg := NewUser()
 		id := guid.New()
-		agg.ApplyChange(UserCreated{&cqrs.BaseEvent{
-			MessageId: guid.New().String(),
-			Ver:       -1,
-		}, id, "bob"})
+		agg.ApplyChange(UserCreated{
+			BaseEvent: &cqrs.BaseEvent{MessageId: guid.New().String(), Ver: -1},
+			Id:        id,
+			Name:      "bob",
+		})
 
-		repo.Save(agg, -1)
+		So(repo.Save(agg, -1), ShouldBeNil)
 
-		loaded := repo.GetById(id)
+		loaded, err := repo.GetById(id)
+		So(err, ShouldBeNil)
 		So(loaded.name, ShouldEqual, "bob")
 		So(loaded.Id(), ShouldEqual, id)
 
