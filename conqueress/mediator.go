@@ -9,9 +9,6 @@ import (
 type CommandHandler func(cmd Command) error
 type EventProcessor func(evt Event) error
 
-type Command interface {
-}
-
 // Mediator dispatches commands to their registered handlers and publishes
 // events to their registered processors.
 //

@@ -2,11 +2,11 @@ package conqueress
 
 import (
 	"fmt"
-	"github.com/iamkoch/conqueress/guid"
-	"github.com/iamkoch/ensure"
-	"github.com/stretchr/testify/assert"
 	"testing"
 	"time"
+
+	"github.com/iamkoch/ensure"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestCommandDispatch(t *testing.T) {
@@ -140,21 +140,12 @@ func TestPublish(t *testing.T) {
 	}, t)
 }
 
+// TestEvent embeds *BaseEvent so it satisfies the full Event interface
+// (MsgId, Version, WithVersion, CorrelationId, CausationId, OccurredAt,
+// WithMetadata) for free. Tests construct it via NewEvent[TestEvent] so the
+// embedded base is populated.
 type TestEvent struct {
-}
-
-func (t TestEvent) MsgId() guid.Guid {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (t TestEvent) WithVersion(v int) {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (t TestEvent) Version() int {
-	panic("implement me")
+	*BaseEvent
 }
 
 type TestCmd struct {
