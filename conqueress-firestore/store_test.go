@@ -198,7 +198,7 @@ func TestVersionsAndConcurrency(t *testing.T) {
 
 func TestConcurrency(t *testing.T) {
 	Convey("saving the same entity twice with the same expected version", t, func() {
-		m := cqrs.NewMediator(false)
+		m := cqrs.NewMediator()
 		tm := NewTypeMap().Add(sample_domain.InventoryItemCreated{}).Add(sample_domain.InventoryItemRenamed{})
 
 		s, err := NewFirestoreEventStore(context.Background(), tm)
@@ -232,7 +232,7 @@ func TestConcurrency(t *testing.T) {
 func TestStore(t *testing.T) {
 	Convey("save and load should work simply", t, func() {
 		Convey("when saving", func() {
-			m := cqrs.NewMediator(false)
+			m := cqrs.NewMediator()
 			tm := NewTypeMap().Add(sample_domain.InventoryItemCreated{}).Add(sample_domain.InventoryItemRenamed{})
 
 			s, err := NewFirestoreEventStore(context.Background(), tm)
@@ -270,7 +270,7 @@ func TestStore(t *testing.T) {
 
 	Convey("concurrency check works", t, func() {
 		Convey("when saving with wrong version, throws concurrency exception", func() {
-			m := cqrs.NewMediator(false)
+			m := cqrs.NewMediator()
 			tm := NewTypeMap().Add(sample_domain.InventoryItemCreated{}).Add(sample_domain.InventoryItemRenamed{})
 
 			s, err := NewFirestoreEventStore(context.Background(), tm)

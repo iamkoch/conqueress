@@ -54,7 +54,7 @@ func TestRepository(t *testing.T) {
 			cap = e
 			return nil
 		}
-		m := cqrs.NewMediator(false)
+		m := cqrs.NewMediator()
 		storage := NewInMemoryEventStore[guid.Guid](m)
 		repo := eventstore.NewGenericIDRepository[*User, guid.Guid](storage, NewUser)
 		_ = m.RegisterEventHandler(reflect.TypeOf(UserCreated{}), h)

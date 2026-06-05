@@ -32,7 +32,7 @@ func (t *testPublisher) Handle(event cqrs.Event) error {
 func TestApplication(t *testing.T) {
 
 	Convey("Create inventory item", t, func() {
-		m := cqrs.NewMediator(false)
+		m := cqrs.NewMediator()
 		storage := inmemory.NewInMemoryEventStore[guid.Guid{}](m)
 		repo := eventstore.NewRepository[*sample_domain.InventoryItem](storage, sample_domain.DefaultInventoryItem)
 
@@ -52,7 +52,7 @@ func TestApplication(t *testing.T) {
 	})
 
 	Convey("Applying multiple commands", t, func() {
-		m := cqrs.NewMediator(false)
+		m := cqrs.NewMediator()
 		storage := inmemory.NewInMemoryEventStore(m)
 		repo := eventstore.NewRepository[*sample_domain.InventoryItem](storage, sample_domain.DefaultInventoryItem)
 
@@ -72,7 +72,7 @@ func TestApplication(t *testing.T) {
 	})
 
 	Convey("Mediator blows when same handler registered twice", t, func() {
-		m := cqrs.NewMediator(false)
+		m := cqrs.NewMediator()
 
 		handler := newTestPublisher()
 		m.RegisterEventHandler(reflect.TypeOf(sample_domain.InventoryItemRenamed{}), handler.Handle)

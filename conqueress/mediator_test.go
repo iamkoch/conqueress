@@ -18,7 +18,7 @@ func TestCommandDispatch(t *testing.T) {
 	)
 	ensure.That("published commands are dispatched without delay when induce is false", func(s *ensure.Scenario) {
 		s.Given("a command dispatcher with induce delay false", func() {
-			mediator = NewMediator(false)
+			mediator = NewMediator()
 		})
 
 		s.And("a command handler", func() {
@@ -61,7 +61,7 @@ func TestCommandHandlerReturnsError(t *testing.T) {
 	)
 	ensure.That("command handlers that return an error bubble up the error", func(s *ensure.Scenario) {
 		s.Given("a command dispatcher with induce delay false", func() {
-			mediator = NewMediator(false)
+			mediator = NewMediator()
 		})
 
 		s.And("a command handler", func() {
@@ -108,7 +108,7 @@ func TestPublish(t *testing.T) {
 	)
 	ensure.That("published events are sent to all handlers", func(s *ensure.Scenario) {
 		s.Given("a mediator", func() {
-			mediator = NewMediator(false)
+			mediator = NewMediator()
 		})
 
 		s.And("a handler", func() {

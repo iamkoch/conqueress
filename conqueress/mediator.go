@@ -3,9 +3,7 @@ package conqueress
 import (
 	"errors"
 	"log/slog"
-	"math/rand"
 	"reflect"
-	"time"
 )
 
 type CommandHandler func(cmd Command) error
@@ -14,11 +12,20 @@ type EventProcessor func(evt Event) error
 type Command interface {
 }
 
+// Mediator dispatches commands to their registered handlers and publishes
+// events to their registered processors.
+//
+// Commands are dispatched on a background goroutine (Dispatch) or synchronously
+// (DispatchSync); events publish to N processors concurrently (Publish) or
+// sequentially (PublishSync).
+//
+// The core is intentionally deterministic. If you want artificial delays in
+// tests to exercise eventual-consistency behaviour, wrap a handler with a
+// delay decorator at registration time — don't bake it into the framework.
 type Mediator struct {
 	commandQueue    chan queuedCommand
 	commandHandlers map[reflect.Type]CommandHandler
 	eventProcessors map[reflect.Type][]EventProcessor
-	induceDelay     bool
 }
 
 type queuedCommand struct {
@@ -26,12 +33,13 @@ type queuedCommand struct {
 	synchronousResponse chan CommandProcessingError
 }
 
-func NewMediator(induceDelay bool) *Mediator {
+// NewMediator constructs an empty mediator and starts its background
+// command-processing goroutine.
+func NewMediator() *Mediator {
 	mediator := &Mediator{
 		commandQueue:    make(chan queuedCommand),
 		commandHandlers: make(map[reflect.Type]CommandHandler),
 		eventProcessors: make(map[reflect.Type][]EventProcessor),
-		induceDelay:     induceDelay,
 	}
 
 	go mediator.processCommands()
@@ -39,29 +47,23 @@ func NewMediator(induceDelay bool) *Mediator {
 }
 
 func (m *Mediator) processCommands() {
-	for {
-		select {
-		case cmdReq := <-m.commandQueue:
-			cmd := cmdReq.cmd
-			slog.With(
-				"command", cmd,
-				"type", reflect.TypeOf(cmd),
-			).Debug("Processing command")
-			resp := cmdReq.synchronousResponse
-			handler, _ := m.commandHandlers[reflect.TypeOf(cmd)]
-			if m.induceDelay {
-				time.Sleep(time.Duration(1*rand.Intn(3)) * time.Second)
-			}
+	for cmdReq := range m.commandQueue {
+		cmd := cmdReq.cmd
+		slog.With(
+			"command", cmd,
+			"type", reflect.TypeOf(cmd),
+		).Debug("Processing command")
+		resp := cmdReq.synchronousResponse
+		handler := m.commandHandlers[reflect.TypeOf(cmd)]
 
-			result := handler(cmd)
-			slog.With(
-				"command", cmd,
-				"type", reflect.TypeOf(cmd),
-				"result", result,
-			).Debug("Command processed")
-			if resp != nil {
-				resp <- result
-			}
+		result := handler(cmd)
+		slog.With(
+			"command", cmd,
+			"type", reflect.TypeOf(cmd),
+			"result", result,
+		).Debug("Command processed")
+		if resp != nil {
+			resp <- result
 		}
 	}
 }
@@ -154,10 +156,7 @@ func (m *Mediator) DispatchSync(cmd Command, syncResp chan CommandProcessingErro
 			"command", cmd,
 			"type", reflect.TypeOf(cmd),
 		).Debug("Processing command")
-		handler, _ := m.commandHandlers[reflect.TypeOf(cmd)]
-		if m.induceDelay {
-			time.Sleep(time.Duration(1*rand.Intn(3)) * time.Second)
-		}
+		handler := m.commandHandlers[reflect.TypeOf(cmd)]
 
 		result := handler(cmd)
 		slog.With(
@@ -170,14 +169,15 @@ func (m *Mediator) DispatchSync(cmd Command, syncResp chan CommandProcessingErro
 	return errors.New("no handler registered")
 }
 
+// Publish fans the event out to all registered processors concurrently.
+// Each processor runs on its own goroutine. Errors from individual processors
+// are not surfaced to the caller; instrument inside each processor if you
+// need observability.
 func (m *Mediator) Publish(evt Event) error {
 	if processors, ok := m.eventProcessors[reflect.TypeOf(evt)]; ok {
 		for _, processor := range processors {
 			go func(p EventProcessor) {
-				if m.induceDelay {
-					time.Sleep(time.Duration(rand.Intn(10)) * time.Second) // Have a variable degree of eventual consistency
-				}
-				p(evt)
+				_ = p(evt)
 			}(processor)
 		}
 		return nil
@@ -185,15 +185,13 @@ func (m *Mediator) Publish(evt Event) error {
 	return errors.New("no processor registered")
 }
 
+// PublishSync runs each processor sequentially on the caller's goroutine.
+// Errors from individual processors are not surfaced (consistent with
+// Publish); wrap a processor with error-aware middleware if needed.
 func (m *Mediator) PublishSync(evt Event) error {
 	if processors, ok := m.eventProcessors[reflect.TypeOf(evt)]; ok {
 		for _, processor := range processors {
-			func(p EventProcessor) {
-				if m.induceDelay {
-					time.Sleep(time.Duration(rand.Intn(10)) * time.Second) // Have a variable degree of eventual consistency
-				}
-				p(evt)
-			}(processor)
+			_ = processor(evt)
 		}
 		return nil
 	}
