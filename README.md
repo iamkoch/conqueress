@@ -130,6 +130,45 @@ func MakeCreateItemHandler(repo Repository) cqrs.HandleCommand[CreateItem] {
 The HTTP command-handler module receives the typed
 `HandleCommand[CreateItem]` at construction time and invokes it per request.
 
+### Maintain a read-model projection
+
+`BaseProjection` carries identity and a monotonic version. `BaseProjectionHandler[TProjection]`
+wraps a `LoadProjection` and `SaveProjection` pair so the handler can express the update
+as "load, mutate, save" without spelling it out at every call site:
+
+```go
+type ItemSummary struct {
+    cqrs.BaseProjection
+    Name string
+}
+
+type ItemSummaryHandler struct {
+    cqrs.BaseProjectionHandler[*ItemSummary]
+}
+
+func NewItemSummaryHandler(load cqrs.LoadProjection[*ItemSummary], save cqrs.SaveProjection[*ItemSummary]) *ItemSummaryHandler {
+    return &ItemSummaryHandler{
+        BaseProjectionHandler: *cqrs.NewBaseProjectionHandler(load, save, func(id guid.Guid) *ItemSummary {
+            p := &ItemSummary{}
+            p.BaseProjection = cqrs.NewBaseProjection(id, -1)
+            return p
+        }),
+    }
+}
+
+func (h *ItemSummaryHandler) OnCreated(e cqrs.Event) error {
+    iic := e.(ItemCreated)
+    return h.UpdateProjection(iic.Id, iic, func(p *ItemSummary, e cqrs.Event) {
+        evt := e.(ItemCreated)
+        p.Name = evt.Name
+        p.IncrementVersion()
+    })
+}
+```
+
+The `LoadProjection` and `SaveProjection` delegates are the persistence port; pick any
+store (Mongo, Postgres, in-memory) and supply closures that match the delegate signatures.
+
 ### Translate a domain event to an integration event
 
 The integration-events ACL in your service subscribes to internal
