@@ -4,6 +4,7 @@ import (
 	"errors"
 	"log/slog"
 	"reflect"
+	"sync"
 )
 
 type CommandHandler func(cmd Command) error
@@ -166,20 +167,30 @@ func (m *Mediator) DispatchSync(cmd Command, syncResp chan CommandProcessingErro
 	return errors.New("no handler registered")
 }
 
-// Publish fans the event out to all registered processors concurrently.
-// Each processor runs on its own goroutine. Errors from individual processors
-// are not surfaced to the caller; instrument inside each processor if you
-// need observability.
+// Publish fans the event out to all registered processors concurrently and
+// blocks until every processor has returned. Errors from individual
+// processors are not surfaced to the caller; instrument inside each
+// processor if you need observability.
+//
+// Blocking on completion is deliberate. Fire-and-forget publish makes
+// downstream side effects untestable and hides handler errors. If you want
+// non-blocking semantics, wrap the call in a goroutine at the call site.
 func (m *Mediator) Publish(evt Event) error {
-	if processors, ok := m.eventProcessors[reflect.TypeOf(evt)]; ok {
-		for _, processor := range processors {
-			go func(p EventProcessor) {
-				_ = p(evt)
-			}(processor)
-		}
-		return nil
+	processors, ok := m.eventProcessors[reflect.TypeOf(evt)]
+	if !ok {
+		return errors.New("no processor registered")
 	}
-	return errors.New("no processor registered")
+
+	var wg sync.WaitGroup
+	wg.Add(len(processors))
+	for _, processor := range processors {
+		go func(p EventProcessor) {
+			defer wg.Done()
+			_ = p(evt)
+		}(processor)
+	}
+	wg.Wait()
+	return nil
 }
 
 // PublishSync runs each processor sequentially on the caller's goroutine.

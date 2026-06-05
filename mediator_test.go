@@ -3,7 +3,6 @@ package conqueress
 import (
 	"fmt"
 	"testing"
-	"time"
 
 	"github.com/iamkoch/ensure"
 	"github.com/stretchr/testify/assert"
@@ -13,11 +12,12 @@ func TestCommandDispatch(t *testing.T) {
 	var (
 		mediator             *Mediator
 		handler              *TestCmdHandler
-		resp                 = make(chan CommandProcessingError)
+		resp                 = make(chan CommandProcessingError, 1)
 		commandDispatchError error
+		processingError      CommandProcessingError
 	)
-	ensure.That("published commands are dispatched without delay when induce is false", func(s *ensure.Scenario) {
-		s.Given("a command dispatcher with induce delay false", func() {
+	ensure.That("commands dispatched onto the mediator are handled", func(s *ensure.Scenario) {
+		s.Given("a mediator", func() {
 			mediator = NewMediator()
 		})
 
@@ -26,16 +26,20 @@ func TestCommandDispatch(t *testing.T) {
 			_ = RegisterCommandHandler[TestCmd](mediator, handler.Handle)
 		})
 
-		s.When("I publish a command", func() {
+		s.When("I dispatch a command and wait for the handler to complete", func() {
 			commandDispatchError = mediator.Dispatch(TestCmd{
 				v1: "test",
 				v2: 5,
 			}, resp)
-			time.Sleep(10 * time.Millisecond)
+			processingError = <-resp
 		})
 
-		s.Then("it should not error", func() {
+		s.Then("the submission should not error", func() {
 			assert.Nil(t, commandDispatchError)
+		})
+
+		s.And("the processing should not error", func() {
+			assert.Nil(t, processingError)
 		})
 
 		s.And("it should be handled", func() {
@@ -56,38 +60,35 @@ func TestCommandHandlerReturnsError(t *testing.T) {
 	var (
 		mediator             *Mediator
 		handler              *TestCmdHandler
-		resp                 = make(chan CommandProcessingError)
+		resp                 = make(chan CommandProcessingError, 1)
 		commandDispatchError error
+		processingError      CommandProcessingError
 	)
 	ensure.That("command handlers that return an error bubble up the error", func(s *ensure.Scenario) {
-		s.Given("a command dispatcher with induce delay false", func() {
+		s.Given("a mediator", func() {
 			mediator = NewMediator()
 		})
 
-		s.And("a command handler", func() {
+		s.And("a command handler that returns an error", func() {
 			handler = &TestCmdHandler{}
 			_ = RegisterCommandHandler[TestCmd](mediator, handler.ErrorHandle)
 		})
 
-		s.When("I publish a command", func() {
+		s.When("I dispatch a command and wait for the handler to complete", func() {
 			commandDispatchError = mediator.Dispatch(TestCmd{
 				v1: "test",
 				v2: 5,
 			}, resp)
-			time.Sleep(500 * time.Millisecond)
+			processingError = <-resp
 		})
 
 		s.Then("it should be handled", func() {
 			assert.Equal(t, 1, len(handler.received))
 		})
 
-		s.And("it should error", func() {
-			var caughtErr error
-			select {
-			case caughtErr = <-resp:
-			}
+		s.And("the submission should not error and the processing should error", func() {
 			assert.Nil(t, commandDispatchError)
-			assert.NotNil(t, caughtErr)
+			assert.NotNil(t, processingError)
 		})
 
 		s.And("the command should match", func() {
@@ -116,8 +117,7 @@ func TestPublish(t *testing.T) {
 		})
 
 		s.When("I publish an event", func() {
-			mediator.Publish(TestEvent{})
-			time.Sleep(100 * time.Millisecond)
+			_ = mediator.Publish(TestEvent{})
 		})
 
 		s.Then("it should be handled", func() {

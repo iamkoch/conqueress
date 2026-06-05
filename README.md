@@ -1,59 +1,57 @@
 # Conqueress
 
-A small ports-and-adapters CQRS / event-sourcing kit for Go. Inspired by Greg
-Young's "simplest possible thing" talks and the C# pattern at
+A small CQRS and event-sourcing kit for Go in the ports-and-adapters style.
+Inspired by Greg Young's "simplest possible thing" talks and the C# pattern in
 [`iamkoch/platform`](https://github.com/iamkoch/platform/tree/main/libraries/IntelAgent.Framework).
 
-## What's in the box
+## What's here
 
-### `conqueress/`
+### Core (repository root)
 
-The core. Domain primitives, dispatcher, eventing.
+Domain primitives, dispatcher, eventing.
 
-- **`Event` interface + `BaseEvent`** — events carry their ID, version,
-  correlation, causation and `OccurredAt`. Consumers embed `*BaseEvent` for
-  free implementations.
-- **`IntegrationEvent` interface** — extends `Event` with `EventType() string`
-  for cross-language / cross-service wire stability. Distinct from domain
-  events that stay inside the aggregate.
-- **`Command` (marker) + `BaseCommand`** — commands optionally carry their
-  own ID, correlation, causation and createdAt; embed `BaseCommand` for the
-  free implementation.
-- **`HandleCommand[T]`, `HandleQuery[Q,R]`, `HandleEvent[T]`** — typed
-  function aliases for handler composition. Factory functions close over
-  dependencies and return the right handler shape.
-- **`IntegrationEventPublisher` interface** — the outbound port for
-  publishing integration events to a message bus.
-- **`Mediator`** — reflection-based command/event dispatcher. Use it for
-  in-process routing when you want loose coupling; use the typed handlers
-  above when you want statically-typed factory composition.
+- `Event` interface and `BaseEvent`. Events carry an ID, version, correlation,
+  causation and `OccurredAt`. Consumers embed `*BaseEvent` to satisfy the
+  interface.
+- `IntegrationEvent` interface. Extends `Event` with `EventType() string` for
+  cross-language wire stability when an event has to leave the service.
+- `Command` (marker) and `BaseCommand`. Commands optionally carry an ID,
+  correlation, causation and `CreatedAt`. Embed `BaseCommand` when you want
+  those fields populated.
+- `HandleCommand[T]`, `HandleQuery[Q,R]`, `HandleEvent[T]`. Typed function
+  aliases for handler composition. Factory functions close over dependencies
+  and return one of these.
+- `IntegrationEventPublisher` interface. Outbound port for publishing
+  integration events to a message bus.
+- `Mediator`. Reflection-based command and event dispatcher. Optional.
 
-### `conqueress/domain/`
+### `domain/`
 
-- **`AggregateRootBase[TID]`** — embed this in your aggregate. The base
-  tracks uncommitted changes and an injected `innerApply` callback.
-- **Dispatch pattern**: each aggregate writes its own
-  `handleEvent(e cqrs.Event)` method containing a `switch evt := e.(type)`
-  over the event types it handles, then calls `SetInnerApply(handleEvent)`
-  at construction. No reflection in the dispatch path.
+`AggregateRootBase[TID]`. Embed in your aggregate. The base tracks uncommitted
+changes and an injected `innerApply` callback.
 
-### `conqueress/eventstore/`
+Dispatch is a normal Go type switch that the consumer owns. Each aggregate
+declares a `handleEvent(e cqrs.Event)` method containing a
+`switch evt := e.(type)` over the events it handles, then calls
+`SetInnerApply(handleEvent)` at construction. The base routes every event
+through that callback. No reflection in the dispatch path.
 
-- **`Repository[T]` + `GenericIDRepository[T, TID]`** — `GetById(id)` /
-  `Save(aggregate, expectedVersion)` with optimistic concurrency control.
-- **`IEventStore` / `IGenericIDEventStore[TID]`** — the persistence port.
-- **`inmemory/`** — in-process implementation for tests.
+### `eventstore/`
 
-### `conqueress/guid/`
+- `Repository[T]` and `GenericIDRepository[T, TID]`. `GetById(id)` and
+  `Save(aggregate, expectedVersion)` with optimistic concurrency.
+- `IEventStore` and `IGenericIDEventStore[TID]`. The persistence port.
+- `inmemory/`. In-process implementation for tests.
 
-- **`guid.Guid`** — xid-backed ID type with `New()` / `FromString` /
-  `MustFromString`.
+### `guid/`
 
-### Sibling Mongo + Firestore implementations
+`guid.Guid`. xid-backed ID type with `New()`, `FromString` and
+`MustFromString`.
 
-- **`conqueress-mongo/`** — MongoDB-backed event store with transactional
-  saves.
-- **`conqueress-firestore/`** — Firestore-backed event store.
+### Sibling adapters
+
+- `conqueress-mongo/`. MongoDB-backed event store with transactional saves.
+- `conqueress-firestore/`. Firestore-backed event store.
 
 ## Quick start
 
@@ -94,8 +92,6 @@ func NewItem(id guid.Guid, name string) *Item {
     return item
 }
 
-// handleEvent is the type-switch the consumer owns. The base struct's
-// ApplyChange routes every event through this method.
 func (i *Item) handleEvent(e cqrs.Event) {
     switch evt := e.(type) {
     case ItemCreated:
@@ -126,13 +122,13 @@ func MakeCreateItemHandler(repo Repository) cqrs.HandleCommand[CreateItem] {
 }
 ```
 
-The HTTP-command-handler module receives the typed `HandleCommand[CreateItem]`
-at construction time and invokes it per request.
+The HTTP command-handler module receives the typed
+`HandleCommand[CreateItem]` at construction time and invokes it per request.
 
-### Map a domain event to an integration event
+### Translate a domain event to an integration event
 
-The integrationevents ACL in your service subscribes to internal `ItemCreated`
-events and translates them into the public wire-stable event:
+The integration-events ACL in your service subscribes to internal
+`ItemCreated` events and publishes the wire-stable equivalent:
 
 ```go
 type ItemCreatedIntegrationEvent struct {
@@ -156,23 +152,37 @@ func (a *Acl) OnItemCreated(ctx context.Context, evt ItemCreated, correlationId 
 
 ## Architecture
 
-- **No central God-object.** The Mediator exists as a convenience for
-  in-process dispatch; you don't have to use it. Typed function aliases
-  (`HandleCommand[T]`, `HandleEvent[T]`) let you compose handlers via
-  factories that close over their dependencies.
-- **Domain Event vs Integration Event** as first-class. Domain events stay
-  inside the aggregate's bounded context. Integration events cross service
-  boundaries via a published bus. The translation between the two is
-  explicit and lives in your ACL layer.
-- **Correlation, causation, occurredAt on every event.** No envelope wrapper
-  required; the metadata lives on the event itself.
-- **Generic aggregate IDs.** `AggregateRootBase[TID]` and
-  `GenericIDRepository[T, TID]` accept arbitrary ID types. `guid.Guid` is
-  the common case; composite/value-typed IDs (e.g. `PolicyVersion`) are
-  first-class.
+There is no central God-object. The Mediator is one option for in-process
+dispatch. You can ignore it and compose handlers via factory functions that
+return `HandleCommand[T]`.
+
+Domain events stay inside the aggregate's bounded context. Integration events
+cross service boundaries via a published bus. The translation between the two
+lives in your ACL layer and is explicit.
+
+Every event carries correlation, causation and `OccurredAt`. No envelope
+wrapper is required; the metadata sits on the event itself.
+
+Aggregate IDs are generic. `AggregateRootBase[TID]` and
+`GenericIDRepository[T, TID]` accept any ID type. `guid.Guid` is the common
+case. Composite or value-typed IDs such as a `(policyId, version)` tuple work
+the same way.
+
+## Tests
+
+```sh
+go test -race -count=1 ./...
+```
+
+CI runs the same command across Go 1.23 and 1.24 on every push and pull
+request. See `.github/workflows/test.yml`.
 
 ## Status
 
-Experimental. The framework is being actively shaped by use in extracting a
-bind capability from a larger Spring service into a Go service. Expect the
-API to evolve; pin to a commit SHA in your `go.mod` and update deliberately.
+Experimental. The API is being shaped by use in extracting a bind capability
+from a Spring service into Go. Pin to a commit SHA in your `go.mod` and
+update deliberately.
+
+## Licence
+
+See `LICENSE`.
