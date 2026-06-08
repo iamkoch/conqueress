@@ -222,6 +222,14 @@ CI runs the same command across the two actively supported Go releases
 (currently 1.25 and 1.26) on every push and pull request. See
 `.github/workflows/test.yml`.
 
+## Patterns
+
+Guidance notes on when to reach for which mechanism live in `doc/patterns/`.
+
+- [Facts versus commands](doc/patterns/facts-vs-commands.md). When an
+  inbound write is an observation rather than a decision, route it to
+  idempotent durable storage rather than through commands and aggregates.
+
 ## Status
 
 Experimental. The API is still evolving. Pin to a commit SHA in your `go.mod`
