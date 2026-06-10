@@ -36,3 +36,7 @@ jobs:
 
       - name: coverage summary
         run: go tool cover -func=coverage.out | tail -20
+
+      - name: test mongo module
+        working-directory: mongo
+        run: go test -race -count=1 ./...

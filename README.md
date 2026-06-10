@@ -47,10 +47,38 @@ through that callback. No reflection in the dispatch path.
 `guid.Guid`. xid-backed ID type with `New()`, `FromString` and
 `MustFromString`.
 
-### Sibling adapters
+### `mongo/`
 
-- `conqueress-mongo/`. MongoDB-backed event store with transactional saves.
-- `conqueress-firestore/`. Firestore-backed event store.
+A MongoDB-backed event store implementing the context-aware
+`eventstore.Store[TID]` port. Fetchable as its own module:
+
+```sh
+go get github.com/iamkoch/conqueress/mongo
+```
+
+- Generic over any aggregate ID that implements `String()` (composite IDs
+  included).
+- Transactional append with optimistic concurrency via a stream-head
+  collection. Requires a replica set (a single-node replica set is fine
+  locally).
+- Wire-stable event names via an explicit `TypeRegistry`: register each
+  domain event once at composition time and Go type renames never break a
+  persisted stream.
+- Correlation, causation and `OccurredAt` persisted on the envelope.
+
+```go
+registry := mongo.NewTypeRegistry()
+mongo.Register[ItemCreated](registry, "item-created")
+mongo.Register[ItemRenamed](registry, "item-renamed")
+
+store := mongo.NewStore[ItemID](client, "mydb", "item_events", registry)
+repo := eventstore.NewContextRepository[*Item, ItemID](store, NewItem)
+```
+
+### Legacy sibling
+
+- `conqueress-firestore/`. Firestore-backed sample from an earlier iteration.
+  Not currently consumable as a module; treat as reference only.
 
 ## Quick start
 
