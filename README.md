@@ -20,8 +20,9 @@ go get github.com/iamkoch/conqueress/firestore
 go get github.com/iamkoch/conqueress/mongo
 ```
 
-Conqueress requires Go 1.23 or later, because the aggregate and repository
-types are generic.
+The core module requires Go 1.23 or later, because the aggregate and repository
+types are generic. Both storage adapters require Go 1.25 or later, because the
+patched versions of `golang.org/x/crypto` and `golang.org/x/net` do.
 
 ## Modules
 
