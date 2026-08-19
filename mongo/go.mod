@@ -3,7 +3,7 @@ module github.com/iamkoch/conqueress/mongo
 go 1.25.0
 
 require (
-	github.com/iamkoch/conqueress v0.1.0
+	github.com/iamkoch/conqueress v0.1.1
 	github.com/iamkoch/ensure v1.0.0
 	github.com/onsi/ginkgo/v2 v2.32.1
 	github.com/onsi/gomega v1.42.1
