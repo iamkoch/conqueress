@@ -13,6 +13,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"reflect"
+	"sort"
 	"time"
 )
 
@@ -251,6 +252,12 @@ func (f firestoreEventStore) GetEventsForAggregate(aggregateId guid.Guid) []cqrs
 		envelopes = append(envelopes, env)
 
 	}
+
+	// Firestore returns query results in an unspecified order, so restore the
+	// order the events were written in before replaying them.
+	sort.Slice(envelopes, func(i, j int) bool {
+		return envelopes[i].Version < envelopes[j].Version
+	})
 
 	events := make([]cqrs.Event, 0)
 	for _, env := range envelopes {

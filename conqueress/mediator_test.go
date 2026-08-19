@@ -5,6 +5,7 @@ import (
 	"github.com/iamkoch/conqueress/guid"
 	"github.com/iamkoch/ensure"
 	"github.com/stretchr/testify/assert"
+	"sync"
 	"testing"
 	"time"
 )
@@ -39,11 +40,11 @@ func TestCommandDispatch(t *testing.T) {
 		})
 
 		s.And("it should be handled", func() {
-			assert.Equal(t, 1, len(handler.received))
+			assert.Equal(t, 1, len(handler.Received()))
 		})
 
 		s.And("the command should match", func() {
-			cmd := handler.received[0]
+			cmd := handler.Received()[0]
 			typedCmd := cmd.(TestCmd)
 			assert.Equal(t, "test", typedCmd.v1)
 			assert.Equal(t, 5, typedCmd.v2)
@@ -78,7 +79,7 @@ func TestCommandHandlerReturnsError(t *testing.T) {
 		})
 
 		s.Then("it should be handled", func() {
-			assert.Equal(t, 1, len(handler.received))
+			assert.Equal(t, 1, len(handler.Received()))
 		})
 
 		s.And("it should error", func() {
@@ -91,7 +92,7 @@ func TestCommandHandlerReturnsError(t *testing.T) {
 		})
 
 		s.And("the command should match", func() {
-			cmd := handler.received[0]
+			cmd := handler.Received()[0]
 			typedCmd := cmd.(TestCmd)
 			assert.Equal(t, "test", typedCmd.v1)
 			assert.Equal(t, 5, typedCmd.v2)
@@ -121,19 +122,19 @@ func TestPublish(t *testing.T) {
 		})
 
 		s.Then("it should be handled", func() {
-			assert.Equal(t, 1, len(handler1.received))
-			assert.Equal(t, 1, len(handler2.received))
+			assert.Equal(t, 1, len(handler1.Received()))
+			assert.Equal(t, 1, len(handler2.Received()))
 		})
 
 		s.And("the event should match", func() {
-			evt := handler1.received[0]
+			evt := handler1.Received()[0]
 			typedEvt := evt.(TestEvent)
 			assert.NotNil(t, typedEvt)
 		})
 
 		s.And("the event should be the same instance", func() {
-			evt1 := handler1.received[0]
-			evt2 := handler2.received[0]
+			evt1 := handler1.Received()[0]
+			evt2 := handler2.Received()[0]
 			assert.Equal(t, evt1, evt2)
 		})
 
@@ -162,27 +163,51 @@ type TestCmd struct {
 	v2 int
 }
 
+// TestCmdHandler and TestEvtHandler are called on the mediator's own
+// goroutines, so both guard their records with a mutex and hand out copies.
+
 type TestCmdHandler struct {
+	mu       sync.Mutex
 	received []Command
 }
+
 type TestEvtHandler struct {
+	mu       sync.Mutex
 	received []Event
 }
 
 func (h *TestEvtHandler) Handle(evt Event) error {
 	switch evt.(type) {
 	case TestEvent:
+		h.mu.Lock()
+		defer h.mu.Unlock()
 		h.received = append(h.received, evt)
 	}
 	return nil
 }
 
+func (h *TestEvtHandler) Received() []Event {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return append([]Event(nil), h.received...)
+}
+
 func (t *TestCmdHandler) Handle(cmd Command) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	t.received = append(t.received, cmd)
 	return nil
 }
 
 func (t *TestCmdHandler) ErrorHandle(cmd Command) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	t.received = append(t.received, cmd)
 	return fmt.Errorf("some error")
+}
+
+func (t *TestCmdHandler) Received() []Command {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return append([]Command(nil), t.received...)
 }

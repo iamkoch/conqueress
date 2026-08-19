@@ -55,6 +55,15 @@ func (a *AggregateRootBase[TID]) Id() TID {
 	return a._id
 }
 
+// Version returns the version of the last event applied to the aggregate. A
+// freshly constructed aggregate is at version 0, and an aggregate loaded from
+// an event store is at the version of its most recent stored event. Pass this
+// to Repository.Save as the expected version to make the write conditional on
+// nothing else having written to the stream in the meantime.
+func (a *AggregateRootBase[TID]) Version() int {
+	return a._version
+}
+
 func (a *AggregateRootBase[TID]) applyChangeInternal(e cqrs.Event, isNew bool) {
 	a.InnerApply(e)
 

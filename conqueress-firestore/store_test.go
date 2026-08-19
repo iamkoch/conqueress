@@ -11,11 +11,15 @@ import (
 	"github.com/stretchr/testify/require"
 	"reflect"
 	"sample_domain"
+	"sync"
 	"testing"
 	"time"
 )
 
+// testPublisher is called on the mediator's own goroutines, so it guards its
+// records with a mutex and hands out copies.
 type testPublisher struct {
+	mu             sync.Mutex
 	capturedEvents []cqrs.Event
 }
 
@@ -24,12 +28,22 @@ func newTestPublisher() *testPublisher {
 }
 
 func (t *testPublisher) Publish(event cqrs.Event) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	t.capturedEvents = append(t.capturedEvents, event)
 }
 
 func (t *testPublisher) Handle(event cqrs.Event) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	t.capturedEvents = append(t.capturedEvents, event)
 	return nil
+}
+
+func (t *testPublisher) Captured() []cqrs.Event {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return append([]cqrs.Event(nil), t.capturedEvents...)
 }
 
 func TestConcurrencyBehaviour(t *testing.T) {
@@ -220,11 +234,16 @@ func TestConcurrency(t *testing.T) {
 			e := repo.Save(item, -1)
 			So(e, ShouldBeNil)
 
-			a := repo.GetById(item.AggregateRootBase.Id())
+			a, getErr := repo.GetById(item.AggregateRootBase.Id())
+			So(getErr, ShouldBeNil)
 			a.Rename("test2")
 			e = repo.Save(a, 3)
 			So(e, ShouldNotBeNil)
-			So(len(handler.capturedEvents), ShouldEqual, 1)
+
+			// The rejected write must leave the stored stream untouched.
+			reloaded, reloadErr := repo.GetById(itemId)
+			So(reloadErr, ShouldBeNil)
+			So(reloaded.Name(), ShouldEqual, "test")
 		})
 	})
 }
@@ -249,21 +268,19 @@ func TestStore(t *testing.T) {
 			time.Sleep(time.Second)
 			actualId := guid.New()
 			err = m.Dispatch(sample_domain.NewCreateInventoryItem(actualId, "something"), nil)
-			if err != nil {
-				fmt.Errorf("something went wrong dispatching %s", err.Error())
-			}
+			So(err, ShouldBeNil)
 			time.Sleep(time.Second * 2)
 
-			ii := repo.GetById(actualId)
+			ii, getErr := repo.GetById(actualId)
+			So(getErr, ShouldBeNil)
 			So(ii.Name(), ShouldEqual, "something")
 
 			err = m.Dispatch(sample_domain.NewRenameInventoryItem(actualId, "something new"), nil)
-			if err != nil {
-				fmt.Errorf("something went wrong dispatching %s", err.Error())
-			}
+			So(err, ShouldBeNil)
 			time.Sleep(time.Second * 2)
 
-			ii = repo.GetById(actualId)
+			ii, getErr = repo.GetById(actualId)
+			So(getErr, ShouldBeNil)
 			So(ii.Name(), ShouldEqual, "something new")
 		})
 	})
@@ -287,23 +304,21 @@ func TestStore(t *testing.T) {
 			time.Sleep(time.Second)
 			actualId := guid.New()
 			err = m.Dispatch(sample_domain.NewCreateInventoryItem(actualId, "something"), nil)
-			if err != nil {
-				fmt.Errorf("something went wrong dispatching %s", err.Error())
-			}
+			So(err, ShouldBeNil)
 			time.Sleep(time.Second * 2)
 
-			ii := repo.GetById(actualId)
+			ii, getErr := repo.GetById(actualId)
+			So(getErr, ShouldBeNil)
 			So(ii.Name(), ShouldEqual, "something")
 
 			err = m.Dispatch(sample_domain.NewRenameInventoryItem(actualId, "something new"), nil)
 			err = m.Dispatch(sample_domain.NewRenameInventoryItem(actualId, "something new 2"), nil)
 			err = m.Dispatch(sample_domain.NewRenameInventoryItem(actualId, "something new 3"), nil)
-			if err != nil {
-				fmt.Errorf("something went wrong dispatching %s", err.Error())
-			}
+			So(err, ShouldBeNil)
 			time.Sleep(time.Second * 2)
 
-			ii = repo.GetById(actualId)
+			ii, getErr = repo.GetById(actualId)
+			So(getErr, ShouldBeNil)
 			So(ii.Name(), ShouldEqual, "something new 3")
 		})
 	})

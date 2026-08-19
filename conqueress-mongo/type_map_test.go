@@ -1,7 +1,7 @@
 package store
 
 import (
-	enshur "github.com/iamkoch/ensure/stateless"
+	enshur "github.com/iamkoch/ensure"
 	"github.com/stretchr/testify/assert"
 	"reflect"
 	"testing"

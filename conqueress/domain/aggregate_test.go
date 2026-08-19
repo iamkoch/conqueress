@@ -133,13 +133,13 @@ func TestNew(t *testing.T) {
 
 	// Assert
 	assert.NotNil(t, aggregate, "Aggregate should not be nil")
-	
+
 	// Apply an event to test the handler
 	event := cqrs.NewEvent[TestEvent](func(e *TestEvent) {
 		e.EventData = "test data"
 	})
 	aggregate.ApplyChange(event)
-	
+
 	assert.Equal(t, "test data", aggregate.TestValue, "Event handler should update test value")
 	assert.Len(t, aggregate.UncommittedEvents(), 1, "Should have one uncommitted event")
 }
@@ -150,14 +150,14 @@ func TestNewWithID(t *testing.T) {
 
 	// Assert
 	assert.NotNil(t, aggregate, "Aggregate should not be nil")
-	
+
 	// Set ID and apply an event
 	aggregate.Base.SetId("custom-id")
 	event := cqrs.NewEvent[TestEvent](func(e *TestEvent) {
 		e.EventData = "test data with custom ID"
 	})
 	aggregate.ApplyChange(event)
-	
+
 	assert.Equal(t, "custom-id", aggregate.Id(), "ID should be set correctly")
 	assert.Equal(t, "test data with custom ID", aggregate.TestValue, "Event handler should update test value")
 	assert.Len(t, aggregate.UncommittedEvents(), 1, "Should have one uncommitted event")
@@ -169,13 +169,13 @@ func TestGetDefaultAggregate(t *testing.T) {
 
 	// Assert
 	assert.NotNil(t, aggregate, "Aggregate should not be nil")
-	
+
 	// Apply an event to test the handler
 	event := cqrs.NewEvent[TestEvent](func(e *TestEvent) {
 		e.EventData = "test data from default"
 	})
 	aggregate.ApplyChange(event)
-	
+
 	assert.Equal(t, "test data from default", aggregate.TestValue, "Event handler should update test value")
 	assert.Len(t, aggregate.UncommittedEvents(), 1, "Should have one uncommitted event")
-} 
+}

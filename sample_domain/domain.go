@@ -7,7 +7,7 @@ import (
 )
 
 type InventoryItem struct {
-	domain.AggregateRootBase
+	domain.AggregateRootBase[guid.Guid]
 	name string
 	id   guid.Guid
 }
@@ -29,7 +29,7 @@ func (ii *InventoryItem) Name() string {
 
 func DefaultInventoryItem() *InventoryItem {
 	ii := InventoryItem{
-		AggregateRootBase: domain.NewAggregate(),
+		AggregateRootBase: domain.NewAggregate[guid.Guid](),
 	}
 	ii.SetInnerApply(ii.handleEvent)
 	return &ii

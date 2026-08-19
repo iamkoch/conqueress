@@ -1,26 +1,31 @@
 package inmemory
 
 import (
+	"reflect"
+	"testing"
+
 	cqrs "github.com/iamkoch/conqueress"
 	"github.com/iamkoch/conqueress/domain"
 	"github.com/iamkoch/conqueress/eventstore"
 	"github.com/iamkoch/conqueress/guid"
 	. "github.com/smartystreets/goconvey/convey"
-	"reflect"
-	"testing"
 )
 
 type User struct {
-	domain.AggregateRootBase
+	domain.AggregateRootBase[guid.Guid]
 	name string
 }
 
-func (u *User) SetBase(base domain.AggregateRootBase) {
+func (u *User) SetBase(base domain.AggregateRootBase[guid.Guid]) {
 	u.AggregateRootBase = base
 }
 
 func (u *User) GetHandler() func(e cqrs.Event) {
 	return u.handleEvent
+}
+
+func (u *User) SetInnerApply(ia func(e cqrs.Event)) {
+	u.AggregateRootBase.SetInnerApply(ia)
 }
 
 type UserCreated struct {
@@ -44,7 +49,7 @@ func NewUser2() *User {
 
 func NewUser() *User {
 	u := User{
-		AggregateRootBase: domain.NewAggregate(),
+		AggregateRootBase: domain.NewAggregate[guid.Guid](),
 	}
 	u.SetInnerApply(u.handleEvent)
 	return &u
@@ -71,7 +76,8 @@ func TestRepository(t *testing.T) {
 
 		repo.Save(agg, -1)
 
-		loaded := repo.GetById(id)
+		loaded, err := repo.GetById(id)
+		So(err, ShouldBeNil)
 		So(loaded.name, ShouldEqual, "bob")
 		So(loaded.Id(), ShouldEqual, id)
 

@@ -18,7 +18,10 @@ type TestStructWithPointer struct {
 
 // TestCreateInstanceForNonPointerType tests CreateInstance with a non-pointer type
 func TestCreateInstanceForNonPointerType(t *testing.T) {
-	instance := CreateInstance[TestStruct]()
+	instance, isPtr := CreateInstance[TestStruct]()
+	if isPtr {
+		t.Errorf("expected a value type, got a pointer")
+	}
 	if reflect.TypeOf(instance).Kind() != reflect.Struct {
 		t.Errorf("expected a struct, got %T", instance)
 	}
@@ -31,7 +34,10 @@ func TestCreateInstanceForNonPointerType(t *testing.T) {
 
 // TestCreateInstanceForPointerType tests CreateInstance with a pointer type
 func TestCreateInstanceForPointerType(t *testing.T) {
-	instance := CreateInstance[*TestStruct]()
+	instance, isPtr := CreateInstance[*TestStruct]()
+	if !isPtr {
+		t.Errorf("expected a pointer type, got a value")
+	}
 	if reflect.TypeOf(instance).Kind() != reflect.Ptr {
 		t.Errorf("expected a pointer, got %T", instance)
 	}
@@ -49,7 +55,10 @@ func TestCreateInstanceForPointerType(t *testing.T) {
 
 // TestCreateInstanceForStructWithPointerFields tests CreateInstance with a struct containing pointer fields
 func TestCreateInstanceForStructWithPointerFields(t *testing.T) {
-	instance := CreateInstance[TestStructWithPointer]()
+	instance, isPtr := CreateInstance[TestStructWithPointer]()
+	if isPtr {
+		t.Errorf("expected a value type, got a pointer")
+	}
 	if reflect.TypeOf(instance).Kind() != reflect.Struct {
 		t.Errorf("expected a struct, got %T", instance)
 	}
@@ -62,7 +71,10 @@ func TestCreateInstanceForStructWithPointerFields(t *testing.T) {
 
 // TestCreateInstanceForPointerToStructWithPointerFields tests CreateInstance with a pointer to a struct containing pointer fields
 func TestCreateInstanceForPointerToStructWithPointerFields(t *testing.T) {
-	instance := CreateInstance[*TestStructWithPointer]()
+	instance, isPtr := CreateInstance[*TestStructWithPointer]()
+	if !isPtr {
+		t.Errorf("expected a pointer type, got a value")
+	}
 	if reflect.TypeOf(instance).Kind() != reflect.Ptr {
 		t.Errorf("expected a pointer, got %T", instance)
 	}
