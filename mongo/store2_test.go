@@ -9,7 +9,7 @@ package store
 //	. "github.com/onsi/ginkgo/v2"
 //	. "github.com/onsi/gomega"
 //	"reflect"
-//	"sample_domain"
+//	"github.com/iamkoch/conqueress/sample_domain"
 //	"time"
 //)
 //
