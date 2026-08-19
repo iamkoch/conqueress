@@ -220,6 +220,10 @@ Neither adapter publishes events. The in-memory store does, because it holds a
 mediator, so a read model that updates in unit tests will not update against
 Firestore or MongoDB. Publish from your command handlers if you need both.
 
+The in-memory store also fails the save when the mediator has no processor
+registered for an event it is publishing. Register a processor for every event
+type your aggregates raise before you use it, even one that does nothing.
+
 ## Running the tests
 
 The repository is a Go workspace, and `go.work` covers the core module and both
