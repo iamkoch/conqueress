@@ -1,5 +1,7 @@
 # Conqueress
 
+[![CI](https://github.com/iamkoch/conqueress/actions/workflows/ci.yml/badge.svg)](https://github.com/iamkoch/conqueress/actions/workflows/ci.yml)
+
 Conqueress is a ports-and-adapters CQRS and event sourcing framework for Go. It
 borrows heavily from the .NET space, so parts of it are not the most idiomatic
 Go you will read. The persistence store is the part that benefits most: an
@@ -243,6 +245,30 @@ one.
 gcloud emulators firestore start --host-port=127.0.0.1:8722 --project=iamkoch
 FIRESTORE_EMULATOR_HOST=127.0.0.1:8722 go test ./firestore/... -race
 ```
+
+## Continuous integration and releases
+
+`.github/workflows/ci.yml` runs on every push to `main` and every pull
+request. It builds, vets, and checks formatting across all three modules, runs
+the core and MongoDB tests, then starts the Firestore emulator and runs the
+Firestore tests. A second job builds each module with `GOWORK=off` and fails if
+`go mod tidy` would change anything, which catches a module that imports a
+package it does not require. A third runs `govulncheck` over all three.
+
+Tagging is the release. Push a tag and `.github/workflows/release.yml` checks
+that the tag names a real module, builds that module without the workspace,
+creates the GitHub release, and asks the Go module proxy to fetch the version
+so `go get` resolves it straight away.
+
+```sh
+git tag -a v0.1.2 -m 'v0.1.2'
+git push origin v0.1.2
+```
+
+Tag the adapters with a `firestore/` or `mongo/` prefix. Tag the core module
+first when the adapters need to require the new version, because the workspace
+substitutes the code locally but Go still reads the go.mod of whatever version
+they name.
 
 ## Known gaps
 

@@ -1,0 +1,116 @@
+name: Release
+
+# Tagging is the release. Push a tag and this publishes the GitHub release for
+# it, then asks the Go module proxy to fetch the version so go get resolves it
+# straight away rather than after the proxy next looks.
+#
+#   git tag -a v0.1.2 -m 'v0.1.2'            && git push origin v0.1.2
+#   git tag -a firestore/v0.3.0 -m '...'     && git push origin firestore/v0.3.0
+#   git tag -a mongo/v0.3.0 -m '...'         && git push origin mongo/v0.3.0
+
+on:
+  push:
+    tags:
+      - 'v*'
+      - 'firestore/v*'
+      - 'mongo/v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Publish ${{ github.ref_name }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: firestore/go.mod
+
+      - name: Work out which module the tag names
+        id: module
+        run: |
+          tag='${{ github.ref_name }}'
+          case "$tag" in
+            */v*)
+              dir="${tag%/v*}"
+              version="v${tag##*/v}"
+              module="github.com/iamkoch/conqueress/${dir}"
+              ;;
+            v*)
+              dir="."
+              version="$tag"
+              module="github.com/iamkoch/conqueress"
+              ;;
+            *)
+              echo "tag $tag does not name a module" >&2
+              exit 1
+              ;;
+          esac
+
+          if [ ! -f "$dir/go.mod" ]; then
+            echo "no go.mod in $dir" >&2
+            exit 1
+          fi
+
+          declared=$(awk '/^module /{print $2; exit}' "$dir/go.mod")
+          if [ "$declared" != "$module" ]; then
+            echo "tag implies $module but $dir/go.mod declares $declared" >&2
+            exit 1
+          fi
+
+          # From v2 onwards Go requires the major version in the module path.
+          major="${version%%.*}"
+          major="${major#v}"
+          if [ "$major" -ge 2 ] && [ "${declared##*/}" != "v$major" ]; then
+            echo "$version needs $declared to end in /v$major" >&2
+            exit 1
+          fi
+
+          {
+            echo "dir=$dir"
+            echo "version=$version"
+            echo "module=$module"
+          } >> "$GITHUB_OUTPUT"
+
+      # A release that does not compile on its own is worse than no release,
+      # and the workspace hides exactly that failure.
+      - name: Check the module builds without the workspace
+        working-directory: ${{ steps.module.outputs.dir }}
+        env:
+          GOWORK: off
+        run: |
+          go build ./...
+          go vet ./...
+
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create '${{ github.ref_name }}' \
+            --title '${{ steps.module.outputs.module }} ${{ steps.module.outputs.version }}' \
+            --generate-notes \
+            --verify-tag
+
+      - name: Ask the Go module proxy to fetch the version
+        continue-on-error: true
+        env:
+          MODULE: ${{ steps.module.outputs.module }}
+          VERSION: ${{ steps.module.outputs.version }}
+        run: |
+          # The proxy caches a 404 briefly, so give it a few attempts.
+          for attempt in 1 2 3 4 5; do
+            if curl -fsS "https://proxy.golang.org/${MODULE}/@v/${VERSION}.info"; then
+              echo
+              echo "proxy has ${MODULE}@${VERSION}"
+              exit 0
+            fi
+            echo "attempt ${attempt} failed, retrying"
+            sleep 15
+          done
+          echo "proxy has not picked it up yet; it will on its own" >&2
+          exit 1

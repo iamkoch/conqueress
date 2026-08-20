@@ -1,0 +1,126 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Build and test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: firestore/go.mod
+          cache-dependency-path: |
+            go.sum
+            firestore/go.sum
+            mongo/go.sum
+
+      - name: Build
+        run: go build ./... ./firestore/... ./mongo/...
+
+      - name: Vet
+        run: go vet ./... ./firestore/... ./mongo/...
+
+      - name: Check formatting
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "These files need gofmt:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Test core and mongo
+        run: go test ./... ./mongo/... -race -count=1
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Start the Firestore emulator
+        run: |
+          gcloud components install cloud-firestore-emulator --quiet
+          gcloud emulators firestore start --host-port=127.0.0.1:8722 --project=conqueress-ci &
+          for _ in $(seq 1 30); do
+            if nc -z 127.0.0.1 8722; then
+              echo "emulator up"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "emulator did not start" >&2
+          exit 1
+
+      - name: Test firestore
+        env:
+          FIRESTORE_EMULATOR_HOST: 127.0.0.1:8722
+        run: go test ./firestore/... -race -count=1
+
+  standalone:
+    name: Modules build without the workspace
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        module: ['.', firestore, mongo]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: firestore/go.mod
+          cache-dependency-path: ${{ matrix.module }}/go.sum
+
+      # go.work masks a module that imports a package it does not require. A
+      # consumer running go get has no workspace, so build each module without
+      # one.
+      - name: Build and vet ${{ matrix.module }}
+        working-directory: ${{ matrix.module }}
+        env:
+          GOWORK: off
+        run: |
+          go build ./...
+          go vet ./...
+
+      - name: Check go.mod and go.sum are tidy
+        working-directory: ${{ matrix.module }}
+        env:
+          GOWORK: off
+        run: |
+          cp go.mod go.mod.before
+          cp go.sum go.sum.before
+          go mod tidy
+          diff -u go.mod.before go.mod
+          diff -u go.sum.before go.sum
+
+  vulncheck:
+    name: govulncheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: firestore/go.mod
+
+      - name: Scan every module
+        env:
+          GOWORK: off
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          status=0
+          for module in . firestore mongo; do
+            echo "== $module =="
+            (cd "$module" && govulncheck ./...) || status=1
+          done
+          exit $status
