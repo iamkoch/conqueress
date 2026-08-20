@@ -237,21 +237,27 @@ name the adapters as well:
 go test ./... ./mongo/... -race
 ```
 
-The Firestore tests run against the emulator, which needs a Java 21 or later
-runtime on `PATH`. On macOS, `/usr/libexec/java_home -v 21` prints the path to
-one.
+The Firestore tests run against the emulator. Take it from the image Google
+publishes, which carries its own Java:
 
 ```sh
-gcloud emulators firestore start --host-port=127.0.0.1:8722 --project=iamkoch
+docker run -d --name firestore-emulator -p 8722:8722 \
+  gcr.io/google.com/cloudsdktool/google-cloud-cli:emulators \
+  gcloud emulators firestore start --host-port=0.0.0.0:8722 --project=conqueress-ci
+
 FIRESTORE_EMULATOR_HOST=127.0.0.1:8722 go test ./firestore/... -race
 ```
+
+A local `gcloud emulators firestore start` works too, but it needs a Java 21 or
+later runtime on `PATH`. On macOS, `/usr/libexec/java_home -v 21` prints the
+path to one.
 
 ## Continuous integration and releases
 
 `.github/workflows/ci.yml` runs on every push to `main` and every pull
 request. It builds, vets, and checks formatting across all three modules, runs
-the core and MongoDB tests, then starts the Firestore emulator and runs the
-Firestore tests. A second job builds each module with `GOWORK=off` and fails if
+the core and MongoDB tests, then starts the Firestore emulator container and
+runs the Firestore tests. A second job builds each module with `GOWORK=off` and fails if
 `go mod tidy` would change anything, which catches a module that imports a
 package it does not require. A third runs `govulncheck` over all three.
 
