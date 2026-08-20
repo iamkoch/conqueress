@@ -130,12 +130,17 @@ type dbAggregate struct {
 	IsNew   bool   `firestore:"-"`
 }
 
+// tryGetExistingAggregate reads the aggregate through the transaction, so its
+// version joins the transaction's read set and a concurrent write to the same
+// aggregate aborts this one. A plain DocumentRef.Get does not join the read
+// set, which leaves checkConcurrency comparing against a version that another
+// writer may already have moved.
 func tryGetExistingAggregate(
-	ctx context.Context,
+	transaction *firestore.Transaction,
 	ac *firestore.CollectionRef,
 	aid guid.Guid,
 	createDefault func() *dbAggregate) (*dbAggregate, error) {
-	a, e := ac.Doc(aid.String()).Get(ctx)
+	a, e := transaction.Get(ac.Doc(aid.String()))
 	if e != nil && status.Code(e) == codes.NotFound {
 		return createDefault(), nil
 	}
@@ -164,11 +169,12 @@ func (f firestoreEventStore) SaveEvents(aggName string, aggregateId guid.Guid, e
 		getDefaultAggregate := func() *dbAggregate {
 			return &dbAggregate{Id: aggregateId.String(), Version: 0, IsNew: true}
 		}
-		dbAgg, e := tryGetExistingAggregate(ctx, ac, aggregateId, getDefaultAggregate)
-
-		e = checkConcurrency(expectedVersion, dbAgg)
-
+		dbAgg, e := tryGetExistingAggregate(transaction, ac, aggregateId, getDefaultAggregate)
 		if e != nil {
+			return e
+		}
+
+		if e := checkConcurrency(expectedVersion, dbAgg); e != nil {
 			return eventstore.ErrConcurrencyException
 		}
 

@@ -323,3 +323,72 @@ func TestStore(t *testing.T) {
 		})
 	})
 }
+
+// TestConcurrentWritersAtSameVersion checks that the version check is part of
+// the transaction. Several writers load the same aggregate, so they all hold
+// the same expected version, and all try to write at once. Exactly one may
+// win. If the read that feeds checkConcurrency happens outside the
+// transaction, more than one writer sees a stale version and commits.
+func TestConcurrentWritersAtSameVersion(t *testing.T) {
+	const writers = 8
+
+	tm := NewTypeMap().Add(sample_domain.InventoryItemCreated{}).Add(sample_domain.InventoryItemRenamed{})
+
+	s, err := NewFirestoreEventStore(context.Background(), tm)
+	require.NoError(t, err)
+
+	repo := eventstore.NewRepository[*sample_domain.InventoryItem](s, sample_domain.DefaultInventoryItem)
+
+	itemId := guid.New()
+	require.NoError(t, repo.Save(sample_domain.NewInventoryItem(itemId, "original"), -1))
+
+	loaded := make([]*sample_domain.InventoryItem, writers)
+	for i := range loaded {
+		item, err := repo.GetById(itemId)
+		require.NoError(t, err)
+		loaded[i] = item
+	}
+
+	expectedVersion := loaded[0].Version()
+
+	var (
+		wg      sync.WaitGroup
+		mu      sync.Mutex
+		results = make([]error, writers)
+		start   = make(chan struct{})
+	)
+
+	for i := 0; i < writers; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			item := loaded[i]
+			item.Rename(fmt.Sprintf("renamed by %d", i))
+
+			<-start
+			e := repo.Save(item, expectedVersion)
+
+			mu.Lock()
+			defer mu.Unlock()
+			results[i] = e
+		}(i)
+	}
+
+	close(start)
+	wg.Wait()
+
+	succeeded := 0
+	for _, e := range results {
+		if e == nil {
+			succeeded++
+		}
+	}
+
+	require.Equal(t, 1, succeeded,
+		"exactly one writer may commit at version %d, but %d did", expectedVersion, succeeded)
+
+	reloaded, err := repo.GetById(itemId)
+	require.NoError(t, err)
+	require.Equal(t, expectedVersion+1, reloaded.Version(),
+		"the stream must have advanced by exactly one event")
+}
