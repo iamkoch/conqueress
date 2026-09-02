@@ -46,7 +46,7 @@ The core module holds these packages:
 - `conqueress/eventstore/inmemory` — an event store that keeps everything in a
   map, for tests.
 - `conqueress/guid` — the identifier type, a thin wrapper over `xid`.
-- `conqueress/sample_domain` — a worked inventory example, used by the adapter
+- `conqueress/example` — a worked inventory example, used by the adapter
   tests.
 
 ## Defining an aggregate
@@ -138,12 +138,14 @@ func (h Handlers) HandleRenameInventoryItem(cmd cqrs.Command) error {
 		return err
 	}
 
-	expectedVersion := item.Version()
 	item.Rename(c.NewName)
 
-	return h.repository.Save(item, expectedVersion)
+	return h.repository.Save(item, item.Version())
 }
 ```
+
+`Version()` is the version of the last stored event, so applying new changes
+does not move it and you can read it either side of the call.
 
 Saving a loaded aggregate with `-1` fails against any store that enforces the
 check. The in-memory store treats `-1` as "do not check", so a mistake here
@@ -210,14 +212,28 @@ tm := store.NewTypeMap().
 	Add(InventoryItemCreated{}).
 	Add(InventoryItemRenamed{})
 
-s, err := store.NewFirestoreEventStore(context.Background(), tm)
+s, err := store.NewFirestoreEventStore(context.Background(), "my-project", tm)
 ```
 
-The MongoDB adapter takes a connection string instead of a context:
+Pass `firestore.DetectProjectID` instead of a project to take it from the
+environment, which reads `GOOGLE_CLOUD_PROJECT` and then the credentials the
+process is running under. `NewFirestoreEventStoreWithClient` wraps a client you
+have configured yourself, for the client options the constructor does not
+expose.
+
+The MongoDB adapter takes a connection string and a database name:
 
 ```go
-s, err := store.NewMongoEventStore(store.ConnectionString("mongodb://localhost:27017"), tm)
+s, err := store.NewMongoEventStore(
+	store.ConnectionString("mongodb://localhost:27017/?replicaSet=rs0"),
+	"my-database",
+	tm)
 ```
+
+It stores events and aggregates in the `events` and `aggregates` collections of
+that database, and writes both in one transaction. MongoDB only supports
+transactions on a replica set or a sharded cluster, so a standalone server
+rejects the write.
 
 Neither adapter publishes events. The in-memory store does, because it holds a
 mediator, so a read model that updates in unit tests will not update against
@@ -252,6 +268,21 @@ A local `gcloud emulators firestore start` works too, but it needs a Java 21 or
 later runtime on `PATH`. On macOS, `/usr/libexec/java_home -v 21` prints the
 path to one.
 
+The MongoDB tests need a replica set, because the store writes in a
+transaction. A single-node one is enough:
+
+```sh
+docker run -d --name conqueress-mongo -p 27017:27017 mongo:7 --replSet rs0 --bind_ip_all
+docker exec conqueress-mongo mongosh --quiet \
+  --eval 'rs.initiate({_id:"rs0",members:[{_id:0,host:"127.0.0.1:27017"}]})'
+
+go test ./mongo/... -race
+```
+
+Each test creates its own database, so they do not see each other's aggregates
+and can run in any order. Set `MONGO_CONNECTION_STRING` to point at a different
+deployment.
+
 ## Continuous integration and releases
 
 `.github/workflows/ci.yml` runs on every push to `main` and every pull
@@ -278,7 +309,9 @@ they name.
 
 ## Known gaps
 
-The MongoDB adapter has a Ginkgo suite with no specs in it, so it is compiled
-but not exercised. The Firestore adapter hardcodes the project ID `iamkoch` in
-`NewFirestoreEventStore`. `sample_domain` ships in the core module because the
-adapter tests import it, which puts an example on the public API surface.
+Neither adapter has an index on `aggregate_id`, so loading an aggregate scans
+the events collection. Add one before either sees a stream of any size.
+
+The `example` package ships in the core module because all three test suites
+import it. Its package comment says it is exempt from semver, but it is still
+on the public API surface.

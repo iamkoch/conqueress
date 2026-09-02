@@ -4,8 +4,8 @@ import (
 	cqrs "github.com/iamkoch/conqueress"
 	"github.com/iamkoch/conqueress/eventstore"
 	"github.com/iamkoch/conqueress/eventstore/inmemory"
+	"github.com/iamkoch/conqueress/example"
 	"github.com/iamkoch/conqueress/guid"
-	"github.com/iamkoch/conqueress/sample_domain"
 	. "github.com/smartystreets/goconvey/convey"
 	"reflect"
 	"sync"
@@ -48,19 +48,19 @@ func TestApplication(t *testing.T) {
 	Convey("Create inventory item", t, func() {
 		m := cqrs.NewMediator(false)
 		storage := inmemory.NewInMemoryEventStore[guid.Guid](m)
-		repo := eventstore.NewRepository[*sample_domain.InventoryItem](storage, sample_domain.DefaultInventoryItem)
+		repo := eventstore.NewRepository[*example.InventoryItem](storage, example.DefaultInventoryItem)
 
-		commands := sample_domain.NewInventoryCommandHandler(repo)
+		commands := example.NewInventoryCommandHandler(repo)
 		handler := newTestPublisher()
-		cqrs.RegisterCommandHandler[sample_domain.CreateInventoryItem](m, commands.HandleCreateInventoryItem)
-		cqrs.RegisterEventHandlers[sample_domain.InventoryItemCreated](m, handler.Handle)
+		cqrs.RegisterCommandHandler[example.CreateInventoryItem](m, commands.HandleCreateInventoryItem)
+		cqrs.RegisterEventHandlers[example.InventoryItemCreated](m, handler.Handle)
 
 		actualId := guid.New()
-		m.Dispatch(sample_domain.NewCreateInventoryItem(actualId, "something"), nil)
+		m.Dispatch(example.NewCreateInventoryItem(actualId, "something"), nil)
 		time.Sleep(time.Second)
 		So(len(handler.Captured()), ShouldEqual, 1)
 		firstEvent := handler.Captured()[0]
-		iic := firstEvent.(sample_domain.InventoryItemCreated)
+		iic := firstEvent.(example.InventoryItemCreated)
 		So(iic.Id, ShouldEqual, actualId)
 		So(iic.Name, ShouldEqual, "something")
 	})
@@ -68,18 +68,18 @@ func TestApplication(t *testing.T) {
 	Convey("Applying multiple commands", t, func() {
 		m := cqrs.NewMediator(false)
 		storage := inmemory.NewInMemoryEventStore[guid.Guid](m)
-		repo := eventstore.NewRepository[*sample_domain.InventoryItem](storage, sample_domain.DefaultInventoryItem)
+		repo := eventstore.NewRepository[*example.InventoryItem](storage, example.DefaultInventoryItem)
 
-		commands := sample_domain.NewInventoryCommandHandler(repo)
+		commands := example.NewInventoryCommandHandler(repo)
 		handler := newTestPublisher()
-		m.RegisterCommandHandler(reflect.TypeOf(sample_domain.CreateInventoryItem{}), commands.HandleCreateInventoryItem)
-		m.RegisterCommandHandler(reflect.TypeOf(sample_domain.RenameInventoryItem{}), commands.HandleRenameInventoryItem)
-		m.RegisterEventHandler(reflect.TypeOf(sample_domain.InventoryItemCreated{}), handler.Handle)
-		m.RegisterEventHandler(reflect.TypeOf(sample_domain.InventoryItemRenamed{}), handler.Handle)
+		m.RegisterCommandHandler(reflect.TypeOf(example.CreateInventoryItem{}), commands.HandleCreateInventoryItem)
+		m.RegisterCommandHandler(reflect.TypeOf(example.RenameInventoryItem{}), commands.HandleRenameInventoryItem)
+		m.RegisterEventHandler(reflect.TypeOf(example.InventoryItemCreated{}), handler.Handle)
+		m.RegisterEventHandler(reflect.TypeOf(example.InventoryItemRenamed{}), handler.Handle)
 
 		inventoryItemId := guid.New()
-		m.Dispatch(sample_domain.NewCreateInventoryItem(inventoryItemId, "something"), nil)
-		m.Dispatch(sample_domain.NewRenameInventoryItem(inventoryItemId, "something new"), nil)
+		m.Dispatch(example.NewCreateInventoryItem(inventoryItemId, "something"), nil)
+		m.Dispatch(example.NewRenameInventoryItem(inventoryItemId, "something new"), nil)
 		time.Sleep(time.Second)
 
 		So(len(handler.Captured()), ShouldEqual, 2)
@@ -89,8 +89,8 @@ func TestApplication(t *testing.T) {
 		m := cqrs.NewMediator(false)
 
 		handler := newTestPublisher()
-		m.RegisterEventHandler(reflect.TypeOf(sample_domain.InventoryItemRenamed{}), handler.Handle)
-		m.RegisterEventHandler(reflect.TypeOf(sample_domain.InventoryItemRenamed{}), handler.Handle)
+		m.RegisterEventHandler(reflect.TypeOf(example.InventoryItemRenamed{}), handler.Handle)
+		m.RegisterEventHandler(reflect.TypeOf(example.InventoryItemRenamed{}), handler.Handle)
 
 	})
 

@@ -1,4 +1,10 @@
-package sample_domain
+// Package example implements a small inventory aggregate, with the commands,
+// events, command handlers, and read model that go with it.
+//
+// It exists for the library's own tests and for the worked example in the
+// README. It is not part of the stable API: anything here can change in any
+// release, so copy what you need rather than importing it.
+package example
 
 import (
 	cqrs "github.com/iamkoch/conqueress"
@@ -51,11 +57,9 @@ func (ii *InventoryItem) handleEvent(e cqrs.Event) {
 	switch evt := e.(type) {
 	case InventoryItemCreated:
 		ii.SetId(evt.Id)
-		ii.SetVersion(evt.Ver)
 		ii.name = evt.Name
 	case InventoryItemRenamed:
 		ii.name = evt.NewName
-		ii.SetVersion(evt.Ver)
 	}
 }
 

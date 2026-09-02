@@ -1,4 +1,4 @@
-package sample_domain
+package example
 
 import cqrs "github.com/iamkoch/conqueress"
 

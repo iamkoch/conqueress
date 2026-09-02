@@ -39,8 +39,32 @@ jobs:
             exit 1
           fi
 
-      - name: Test core and mongo
-        run: go test ./... ./mongo/... -race -count=1
+      - name: Test core
+        run: go test ./... -race -count=1
+
+      # The store writes events and aggregates in one transaction, which
+      # MongoDB only supports on a replica set. A single node is enough.
+      - name: Start MongoDB
+        run: |
+          docker run -d --name conqueress-mongo -p 27017:27017 \
+            mongo:7 --replSet rs0 --bind_ip_all
+
+          for _ in $(seq 1 30); do
+            if docker exec conqueress-mongo mongosh --quiet --eval 'db.adminCommand("ping").ok'; then
+              break
+            fi
+            sleep 2
+          done
+
+          docker exec conqueress-mongo mongosh --quiet \
+            --eval 'rs.initiate({_id:"rs0",members:[{_id:0,host:"127.0.0.1:27017"}]})'
+
+      - name: Test mongo
+        run: go test ./mongo/... -race -count=1
+
+      - name: Stop MongoDB
+        if: always()
+        run: docker rm -f conqueress-mongo || true
 
       # The runner's gcloud has its component manager disabled and its apt
       # sources do not carry the emulator, so take it from the image Google

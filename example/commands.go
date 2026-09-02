@@ -1,4 +1,4 @@
-package sample_domain
+package example
 
 import (
 	"github.com/iamkoch/conqueress/guid"

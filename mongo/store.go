@@ -17,27 +17,25 @@ import (
 	"time"
 )
 
-type simpleEnvelope struct {
-	Id            guid.Guid `bson:"_id"`
-	CorrelationId guid.Guid `bson:"correlation_id"`
-	CausationId   guid.Guid `bson:"causation_id"`
-}
-
-type envelope struct {
-	simpleEnvelope
-	Type        string `bson:"type"`
-	Body        string `bson:"body"`
-	AggregateId string `bson:"aggregate_id"`
-}
-
 type mongoEventStore struct {
-	client *mongo.Client
-	tm     *TypeMap
+	client   *mongo.Client
+	database string
+	tm       *TypeMap
 }
 
 type ConnectionString string
 
-func NewMongoEventStore(cs ConnectionString, tm *TypeMap) (eventstore.IEventStore, error) {
+// NewMongoEventStore connects to cs and stores events and aggregates in the
+// named database, in the collections "events" and "aggregates".
+//
+// SaveEvents writes both collections in one transaction, which MongoDB only
+// supports on a replica set or a sharded cluster. A standalone server rejects
+// the write.
+func NewMongoEventStore(cs ConnectionString, database string, tm *TypeMap) (eventstore.IEventStore, error) {
+	if database == "" {
+		return nil, errors.New("database must be named")
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -46,7 +44,7 @@ func NewMongoEventStore(cs ConnectionString, tm *TypeMap) (eventstore.IEventStor
 		return nil, err
 	}
 
-	return &mongoEventStore{client, tm}, nil
+	return &mongoEventStore{client, database, tm}, nil
 }
 
 func checkConcurrency(expectedVersion int, a *dbAggregate) error {
@@ -82,8 +80,8 @@ func tryGetExistingAggregate(
 }
 
 func (m mongoEventStore) SaveEvents(aggregateType string, aggregateId guid.Guid, events []cqrs.Event, expectedVersion int) error {
-	ec := m.client.Database("devly").Collection("events")
-	ac := m.client.Database("devly").Collection("aggregates")
+	ec := m.client.Database(m.database).Collection("events")
+	ac := m.client.Database(m.database).Collection("aggregates")
 
 	session, err := m.client.StartSession()
 	if err != nil {
@@ -152,28 +150,29 @@ func (m mongoEventStore) SaveEvents(aggregateType string, aggregateId guid.Guid,
 }
 
 func (m mongoEventStore) GetEventsForAggregate(aggregateId guid.Guid) []cqrs.Event {
-	ec := m.client.Database("devly").Collection("events")
-	c, e := ec.Find(context.Background(), bson.M{"aggregate_id": aggregateId.String()})
+	ec := m.client.Database(m.database).Collection("events")
+	// Find returns documents in no particular order unless asked, and replay
+	// depends on the order the events were written in.
+	byVersion := options.Find().SetSort(bson.D{{Key: "version", Value: 1}})
+
+	c, e := ec.Find(context.Background(), bson.M{"aggregate_id": aggregateId.String()}, byVersion)
 	if e != nil {
-		//if e.Error() == mongo.ErrNoDocuments {
-		//	return []cqrs.Event{}
-		//}
 		panic(e.Error())
 	}
 
-	var results []envelope
+	var results []dbEvent
 	if err := c.All(context.TODO(), &results); err != nil {
 		panic(err)
 	}
 
 	events := make([]cqrs.Event, 0)
-	for _, envelope := range results {
-		get, e := m.tm.Get(envelope.Type)
+	for _, stored := range results {
+		get, e := m.tm.Get(stored.Type)
 		if e != nil {
 			fmt.Println("Error getting event ", e)
 			panic("couldn't get event")
 		}
-		ev, err := envelopeToEvent(get, &envelope)
+		ev, err := envelopeToEvent(get, &stored)
 		if err != nil {
 			fmt.Println("Error getting event ", err)
 			panic("couldn't get event")
@@ -184,16 +183,25 @@ func (m mongoEventStore) GetEventsForAggregate(aggregateId guid.Guid) []cqrs.Eve
 	return events
 }
 
-func envelopeToEvent(t reflect.Type, e *envelope) (cqrs.Event, error) {
+func envelopeToEvent(t reflect.Type, e *dbEvent) (cqrs.Event, error) {
 	v := reflect.New(t)
 
 	// reflected pointer
 	newP := v.Interface()
 
 	// Unmarshal to reflected struct pointer
-	json.Unmarshal([]byte(e.Body), newP)
+	if err := json.Unmarshal([]byte(e.Body), newP); err != nil {
+		return nil, err
+	}
 
-	return dereferenceIfPtr(newP).(cqrs.Event), nil
+	event := dereferenceIfPtr(newP).(cqrs.Event)
+
+	// The version lives on the stored document, not in the event body, so an
+	// aggregate replaying these stays at version -1 without this. Every save
+	// then looks like the first one and the concurrency check never fires.
+	event.WithVersion(e.Version)
+
+	return event, nil
 }
 
 func dereferenceIfPtr(value interface{}) interface{} {

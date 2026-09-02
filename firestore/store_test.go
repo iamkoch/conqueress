@@ -5,11 +5,12 @@ import (
 	"fmt"
 	cqrs "github.com/iamkoch/conqueress"
 	"github.com/iamkoch/conqueress/eventstore"
+	"github.com/iamkoch/conqueress/example"
 	"github.com/iamkoch/conqueress/guid"
-	"github.com/iamkoch/conqueress/sample_domain"
 	"github.com/iamkoch/ensure"
 	. "github.com/smartystreets/goconvey/convey"
 	"github.com/stretchr/testify/require"
+	"os"
 	"reflect"
 	"sync"
 	"testing"
@@ -46,6 +47,15 @@ func (t *testPublisher) Captured() []cqrs.Event {
 	return append([]cqrs.Event(nil), t.capturedEvents...)
 }
 
+// The emulator accepts any project, so tests do not need a real one. Point
+// FIRESTORE_PROJECT_ID somewhere else to run these against a real project.
+func testProjectID() string {
+	if p := os.Getenv("FIRESTORE_PROJECT_ID"); p != "" {
+		return p
+	}
+	return "conqueress-test"
+}
+
 func TestConcurrencyBehaviour(t *testing.T) {
 	var (
 		aggregateId = guid.New()
@@ -54,9 +64,9 @@ func TestConcurrencyBehaviour(t *testing.T) {
 	)
 	ensure.That("saving the same entity twice with the same expected version causes concurrency failures", func(s *ensure.Scenario) {
 		s.Background("Given an available firestore event store", func() {
-			tm := NewTypeMap().Add(sample_domain.InventoryItemCreated{}).Add(sample_domain.InventoryItemRenamed{})
+			tm := NewTypeMap().Add(example.InventoryItemCreated{}).Add(example.InventoryItemRenamed{})
 
-			es, err = NewFirestoreEventStore(context.Background(), tm)
+			es, err = NewFirestoreEventStore(context.Background(), testProjectID(), tm)
 			require.Nil(t, err, "should have failed to create event store")
 
 		})
@@ -64,10 +74,10 @@ func TestConcurrencyBehaviour(t *testing.T) {
 		s.Given("events saved", func() {
 
 			err = es.SaveEvents(
-				reflect.TypeOf(sample_domain.InventoryItem{}).Name(),
+				reflect.TypeOf(example.InventoryItem{}).Name(),
 				aggregateId,
 				[]cqrs.Event{
-					cqrs.NewEvent[sample_domain.InventoryItemCreated](func(s *sample_domain.InventoryItemCreated) {
+					cqrs.NewEvent[example.InventoryItemCreated](func(s *example.InventoryItemCreated) {
 						s.Id = guid.New()
 						s.Name = "test"
 					}),
@@ -81,10 +91,10 @@ func TestConcurrencyBehaviour(t *testing.T) {
 		s.When("try to save again at same version", func() {
 
 			err = es.SaveEvents(
-				reflect.TypeOf(sample_domain.InventoryItem{}).Name(),
+				reflect.TypeOf(example.InventoryItem{}).Name(),
 				aggregateId,
 				[]cqrs.Event{
-					cqrs.NewEvent[sample_domain.InventoryItemCreated](func(s *sample_domain.InventoryItemCreated) {
+					cqrs.NewEvent[example.InventoryItemCreated](func(s *example.InventoryItemCreated) {
 						s.Id = guid.New()
 						s.Name = "test"
 					}),
@@ -101,10 +111,10 @@ func TestConcurrencyBehaviour(t *testing.T) {
 		s.When("try to save again at version one higher", func() {
 
 			err = es.SaveEvents(
-				reflect.TypeOf(sample_domain.InventoryItem{}).Name(),
+				reflect.TypeOf(example.InventoryItem{}).Name(),
 				aggregateId,
 				[]cqrs.Event{
-					cqrs.NewEvent[sample_domain.InventoryItemCreated](func(s *sample_domain.InventoryItemCreated) {
+					cqrs.NewEvent[example.InventoryItemCreated](func(s *example.InventoryItemCreated) {
 						s.Id = guid.New()
 						s.Name = "test"
 					}),
@@ -130,9 +140,9 @@ func TestVersionsAndConcurrency(t *testing.T) {
 	)
 	ensure.That("saving the same entity with variable event lengths causes correct version mismatch comparison", func(s *ensure.Scenario) {
 		s.Background("Given an available firestore event store", func() {
-			tm := NewTypeMap().Add(sample_domain.InventoryItemCreated{}).Add(sample_domain.InventoryItemRenamed{})
+			tm := NewTypeMap().Add(example.InventoryItemCreated{}).Add(example.InventoryItemRenamed{})
 
-			es, err = NewFirestoreEventStore(context.Background(), tm)
+			es, err = NewFirestoreEventStore(context.Background(), testProjectID(), tm)
 			require.Nil(t, err, "should have failed to create event store")
 
 		})
@@ -140,18 +150,18 @@ func TestVersionsAndConcurrency(t *testing.T) {
 		s.Given("events saved", func() {
 
 			err = es.SaveEvents(
-				reflect.TypeOf(sample_domain.InventoryItem{}).Name(),
+				reflect.TypeOf(example.InventoryItem{}).Name(),
 				aggregateId,
 				[]cqrs.Event{
-					cqrs.NewEvent[sample_domain.InventoryItemCreated](func(s *sample_domain.InventoryItemCreated) {
+					cqrs.NewEvent[example.InventoryItemCreated](func(s *example.InventoryItemCreated) {
 						s.Id = guid.New()
 						s.Name = "test"
 					}),
-					cqrs.NewEvent[sample_domain.InventoryItemRenamed](func(s *sample_domain.InventoryItemRenamed) {
+					cqrs.NewEvent[example.InventoryItemRenamed](func(s *example.InventoryItemRenamed) {
 						s.Id = guid.New()
 						s.NewName = "test2"
 					}),
-					cqrs.NewEvent[sample_domain.InventoryItemRenamed](func(s *sample_domain.InventoryItemRenamed) {
+					cqrs.NewEvent[example.InventoryItemRenamed](func(s *example.InventoryItemRenamed) {
 						s.Id = guid.New()
 						s.NewName = "test3"
 					}),
@@ -171,15 +181,15 @@ func TestVersionsAndConcurrency(t *testing.T) {
 		})
 
 		s.And("events should be types", func() {
-			require.IsType(t, sample_domain.InventoryItemCreated{}, aggEvents[0])
-			require.IsType(t, sample_domain.InventoryItemRenamed{}, aggEvents[1])
-			require.IsType(t, sample_domain.InventoryItemRenamed{}, aggEvents[2])
+			require.IsType(t, example.InventoryItemCreated{}, aggEvents[0])
+			require.IsType(t, example.InventoryItemRenamed{}, aggEvents[1])
+			require.IsType(t, example.InventoryItemRenamed{}, aggEvents[2])
 		})
 
 		s.And("events should contain correct info", func() {
-			require.Equal(t, "test", aggEvents[0].(sample_domain.InventoryItemCreated).Name)
-			require.Equal(t, "test2", aggEvents[1].(sample_domain.InventoryItemRenamed).NewName)
-			require.Equal(t, "test3", aggEvents[2].(sample_domain.InventoryItemRenamed).NewName)
+			require.Equal(t, "test", aggEvents[0].(example.InventoryItemCreated).Name)
+			require.Equal(t, "test2", aggEvents[1].(example.InventoryItemRenamed).NewName)
+			require.Equal(t, "test3", aggEvents[2].(example.InventoryItemRenamed).NewName)
 		})
 
 		s.And("should have correct versions", func() {
@@ -191,10 +201,10 @@ func TestVersionsAndConcurrency(t *testing.T) {
 
 		s.And("when you try to save again at wrong version", func() {
 			err = es.SaveEvents(
-				reflect.TypeOf(sample_domain.InventoryItem{}).Name(),
+				reflect.TypeOf(example.InventoryItem{}).Name(),
 				aggregateId,
 				[]cqrs.Event{
-					cqrs.NewEvent[sample_domain.InventoryItemRenamed](func(s *sample_domain.InventoryItemRenamed) {
+					cqrs.NewEvent[example.InventoryItemRenamed](func(s *example.InventoryItemRenamed) {
 						s.Id = guid.New()
 						s.NewName = "test22"
 					}),
@@ -213,24 +223,24 @@ func TestVersionsAndConcurrency(t *testing.T) {
 func TestConcurrency(t *testing.T) {
 	Convey("saving the same entity twice with the same expected version", t, func() {
 		m := cqrs.NewMediator(false)
-		tm := NewTypeMap().Add(sample_domain.InventoryItemCreated{}).Add(sample_domain.InventoryItemRenamed{})
+		tm := NewTypeMap().Add(example.InventoryItemCreated{}).Add(example.InventoryItemRenamed{})
 
-		s, err := NewFirestoreEventStore(context.Background(), tm)
+		s, err := NewFirestoreEventStore(context.Background(), testProjectID(), tm)
 		if err != nil {
 			panic(err.Error())
 		}
-		repo := eventstore.NewRepository[*sample_domain.InventoryItem](s, sample_domain.DefaultInventoryItem)
-		commands := sample_domain.NewInventoryCommandHandler(repo)
-		m.RegisterCommandHandler(reflect.TypeOf(sample_domain.CreateInventoryItem{}), commands.HandleCreateInventoryItem)
-		m.RegisterCommandHandler(reflect.TypeOf(sample_domain.RenameInventoryItem{}), commands.HandleRenameInventoryItem)
+		repo := eventstore.NewRepository[*example.InventoryItem](s, example.DefaultInventoryItem)
+		commands := example.NewInventoryCommandHandler(repo)
+		m.RegisterCommandHandler(reflect.TypeOf(example.CreateInventoryItem{}), commands.HandleCreateInventoryItem)
+		m.RegisterCommandHandler(reflect.TypeOf(example.RenameInventoryItem{}), commands.HandleRenameInventoryItem)
 
 		handler := newTestPublisher()
-		m.RegisterEventHandler(reflect.TypeOf(sample_domain.InventoryItemCreated{}), handler.Handle)
-		m.RegisterEventHandler(reflect.TypeOf(sample_domain.InventoryItemRenamed{}), handler.Handle)
+		m.RegisterEventHandler(reflect.TypeOf(example.InventoryItemCreated{}), handler.Handle)
+		m.RegisterEventHandler(reflect.TypeOf(example.InventoryItemRenamed{}), handler.Handle)
 
 		Convey("should throw a concurrency error", func() {
 			itemId := guid.New()
-			item := sample_domain.NewInventoryItem(itemId, "test")
+			item := example.NewInventoryItem(itemId, "test")
 			e := repo.Save(item, -1)
 			So(e, ShouldBeNil)
 
@@ -252,22 +262,22 @@ func TestStore(t *testing.T) {
 	Convey("save and load should work simply", t, func() {
 		Convey("when saving", func() {
 			m := cqrs.NewMediator(false)
-			tm := NewTypeMap().Add(sample_domain.InventoryItemCreated{}).Add(sample_domain.InventoryItemRenamed{})
+			tm := NewTypeMap().Add(example.InventoryItemCreated{}).Add(example.InventoryItemRenamed{})
 
-			s, err := NewFirestoreEventStore(context.Background(), tm)
+			s, err := NewFirestoreEventStore(context.Background(), testProjectID(), tm)
 			if err != nil {
 				panic(err.Error())
 			}
-			repo := eventstore.NewRepository[*sample_domain.InventoryItem](s, sample_domain.DefaultInventoryItem)
-			commands := sample_domain.NewInventoryCommandHandler(repo)
-			m.RegisterCommandHandler(reflect.TypeOf(sample_domain.CreateInventoryItem{}), commands.HandleCreateInventoryItem)
-			m.RegisterCommandHandler(reflect.TypeOf(sample_domain.RenameInventoryItem{}), commands.HandleRenameInventoryItem)
+			repo := eventstore.NewRepository[*example.InventoryItem](s, example.DefaultInventoryItem)
+			commands := example.NewInventoryCommandHandler(repo)
+			m.RegisterCommandHandler(reflect.TypeOf(example.CreateInventoryItem{}), commands.HandleCreateInventoryItem)
+			m.RegisterCommandHandler(reflect.TypeOf(example.RenameInventoryItem{}), commands.HandleRenameInventoryItem)
 
 			handler := newTestPublisher()
-			m.RegisterEventHandler(reflect.TypeOf(sample_domain.InventoryItemCreated{}), handler.Handle)
+			m.RegisterEventHandler(reflect.TypeOf(example.InventoryItemCreated{}), handler.Handle)
 			time.Sleep(time.Second)
 			actualId := guid.New()
-			err = m.Dispatch(sample_domain.NewCreateInventoryItem(actualId, "something"), nil)
+			err = m.Dispatch(example.NewCreateInventoryItem(actualId, "something"), nil)
 			So(err, ShouldBeNil)
 			time.Sleep(time.Second * 2)
 
@@ -275,7 +285,7 @@ func TestStore(t *testing.T) {
 			So(getErr, ShouldBeNil)
 			So(ii.Name(), ShouldEqual, "something")
 
-			err = m.Dispatch(sample_domain.NewRenameInventoryItem(actualId, "something new"), nil)
+			err = m.Dispatch(example.NewRenameInventoryItem(actualId, "something new"), nil)
 			So(err, ShouldBeNil)
 			time.Sleep(time.Second * 2)
 
@@ -288,22 +298,22 @@ func TestStore(t *testing.T) {
 	Convey("concurrency check works", t, func() {
 		Convey("when saving with wrong version, throws concurrency exception", func() {
 			m := cqrs.NewMediator(false)
-			tm := NewTypeMap().Add(sample_domain.InventoryItemCreated{}).Add(sample_domain.InventoryItemRenamed{})
+			tm := NewTypeMap().Add(example.InventoryItemCreated{}).Add(example.InventoryItemRenamed{})
 
-			s, err := NewFirestoreEventStore(context.Background(), tm)
+			s, err := NewFirestoreEventStore(context.Background(), testProjectID(), tm)
 			if err != nil {
 				panic(err.Error())
 			}
-			repo := eventstore.NewRepository[*sample_domain.InventoryItem](s, sample_domain.DefaultInventoryItem)
-			commands := sample_domain.NewInventoryCommandHandler(repo)
-			m.RegisterCommandHandler(reflect.TypeOf(sample_domain.CreateInventoryItem{}), commands.HandleCreateInventoryItem)
-			m.RegisterCommandHandler(reflect.TypeOf(sample_domain.RenameInventoryItem{}), commands.HandleRenameInventoryItem)
+			repo := eventstore.NewRepository[*example.InventoryItem](s, example.DefaultInventoryItem)
+			commands := example.NewInventoryCommandHandler(repo)
+			m.RegisterCommandHandler(reflect.TypeOf(example.CreateInventoryItem{}), commands.HandleCreateInventoryItem)
+			m.RegisterCommandHandler(reflect.TypeOf(example.RenameInventoryItem{}), commands.HandleRenameInventoryItem)
 
 			handler := newTestPublisher()
-			m.RegisterEventHandler(reflect.TypeOf(sample_domain.InventoryItemCreated{}), handler.Handle)
+			m.RegisterEventHandler(reflect.TypeOf(example.InventoryItemCreated{}), handler.Handle)
 			time.Sleep(time.Second)
 			actualId := guid.New()
-			err = m.Dispatch(sample_domain.NewCreateInventoryItem(actualId, "something"), nil)
+			err = m.Dispatch(example.NewCreateInventoryItem(actualId, "something"), nil)
 			So(err, ShouldBeNil)
 			time.Sleep(time.Second * 2)
 
@@ -311,9 +321,9 @@ func TestStore(t *testing.T) {
 			So(getErr, ShouldBeNil)
 			So(ii.Name(), ShouldEqual, "something")
 
-			err = m.Dispatch(sample_domain.NewRenameInventoryItem(actualId, "something new"), nil)
-			err = m.Dispatch(sample_domain.NewRenameInventoryItem(actualId, "something new 2"), nil)
-			err = m.Dispatch(sample_domain.NewRenameInventoryItem(actualId, "something new 3"), nil)
+			err = m.Dispatch(example.NewRenameInventoryItem(actualId, "something new"), nil)
+			err = m.Dispatch(example.NewRenameInventoryItem(actualId, "something new 2"), nil)
+			err = m.Dispatch(example.NewRenameInventoryItem(actualId, "something new 3"), nil)
 			So(err, ShouldBeNil)
 			time.Sleep(time.Second * 2)
 
@@ -332,17 +342,17 @@ func TestStore(t *testing.T) {
 func TestConcurrentWritersAtSameVersion(t *testing.T) {
 	const writers = 8
 
-	tm := NewTypeMap().Add(sample_domain.InventoryItemCreated{}).Add(sample_domain.InventoryItemRenamed{})
+	tm := NewTypeMap().Add(example.InventoryItemCreated{}).Add(example.InventoryItemRenamed{})
 
-	s, err := NewFirestoreEventStore(context.Background(), tm)
+	s, err := NewFirestoreEventStore(context.Background(), testProjectID(), tm)
 	require.NoError(t, err)
 
-	repo := eventstore.NewRepository[*sample_domain.InventoryItem](s, sample_domain.DefaultInventoryItem)
+	repo := eventstore.NewRepository[*example.InventoryItem](s, example.DefaultInventoryItem)
 
 	itemId := guid.New()
-	require.NoError(t, repo.Save(sample_domain.NewInventoryItem(itemId, "original"), -1))
+	require.NoError(t, repo.Save(example.NewInventoryItem(itemId, "original"), -1))
 
-	loaded := make([]*sample_domain.InventoryItem, writers)
+	loaded := make([]*example.InventoryItem, writers)
 	for i := range loaded {
 		item, err := repo.GetById(itemId)
 		require.NoError(t, err)

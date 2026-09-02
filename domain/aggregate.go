@@ -41,8 +41,16 @@ func (a *AggregateRootBase[TID]) InnerApply(e cqrs.Event) {
 	a._innerApply(e)
 }
 
-type InnerApplier interface {
-	InnerApply(e cqrs.Event)
+// Replay applies a stored event, moving the aggregate to that event's version.
+// The event is not recorded as an uncommitted change, because it is already in
+// the store.
+func (a *AggregateRootBase[TID]) Replay(e cqrs.Event) {
+	a.applyChangeInternal(e, false)
+}
+
+// Replayer is how a repository rebuilds an aggregate from its stored events.
+type Replayer interface {
+	Replay(e cqrs.Event)
 }
 
 type DefaultAggregate[TID any] interface {
@@ -55,21 +63,36 @@ func (a *AggregateRootBase[TID]) Id() TID {
 	return a._id
 }
 
-// Version returns the version of the last event applied to the aggregate. A
-// freshly constructed aggregate is at version 0, and an aggregate loaded from
-// an event store is at the version of its most recent stored event. Pass this
-// to Repository.Save as the expected version to make the write conditional on
-// nothing else having written to the stream in the meantime.
+// Version returns the version of the last stored event applied to the
+// aggregate. An aggregate that has never been saved is at -1, and one loaded
+// from an event store is at the version of its most recent stored event.
+// Applying new changes does not move it, because those events have no version
+// until they are saved.
+//
+// Pass this to Repository.Save as the expected version to make the write
+// conditional on nothing else having written to the stream in the meantime.
 func (a *AggregateRootBase[TID]) Version() int {
 	return a._version
 }
 
 func (a *AggregateRootBase[TID]) applyChangeInternal(e cqrs.Event, isNew bool) {
+	loaded := a._version
+
 	a.InnerApply(e)
 
 	if isNew {
+		// A new event has no version until it is saved, so the aggregate stays
+		// at the version it loaded with. A handler that restores the version
+		// from the event would otherwise reset it to -1 here, and the next
+		// save would look like the first write to the stream and skip the
+		// concurrency check.
+		a._version = loaded
 		a._changes = append(a._changes, e)
+		return
 	}
+
+	// A replayed event carries the version it was stored at.
+	a._version = e.Version()
 }
 
 func (a *AggregateRootBase[TID]) ApplyChange(e cqrs.Event) {

@@ -279,15 +279,27 @@ func (f firestoreEventStore) GetEventsForAggregate(aggregateId guid.Guid) []cqrs
 
 }
 
-func NewFirestoreEventStore(ctx context.Context, tm *TypeMap) (eventstore.IEventStore, error) {
-	client, err := firestore.NewClient(ctx, "iamkoch")
-
+// NewFirestoreEventStore opens a client against the Firestore project named by
+// projectID. Pass firestore.DetectProjectID to take the project from the
+// environment instead, which reads GOOGLE_CLOUD_PROJECT and then the
+// credentials the process is running under.
+//
+// The store owns the client it opens and there is no way to close it. Use
+// NewFirestoreEventStoreWithClient if the client's lifetime matters to you.
+func NewFirestoreEventStore(ctx context.Context, projectID string, tm *TypeMap) (eventstore.IEventStore, error) {
+	client, err := firestore.NewClient(ctx, projectID)
 	if err != nil {
-		fmt.Println("Error creating client ", err)
-		return nil, err
+		return nil, fmt.Errorf("creating firestore client for project %q: %w", projectID, err)
 	}
 
 	return firestoreEventStore{client, tm}, nil
+}
+
+// NewFirestoreEventStoreWithClient wraps a client you have already configured,
+// for the client options this package does not expose. You own the client and
+// must close it.
+func NewFirestoreEventStoreWithClient(client *firestore.Client, tm *TypeMap) eventstore.IEventStore {
+	return firestoreEventStore{client, tm}
 }
 
 type TypeMap struct {

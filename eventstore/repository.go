@@ -54,7 +54,7 @@ func (g genericRepository[T]) GetById(id guid.Guid) (T, error) {
 	}
 	agg := g.createInstance()
 	for _, e := range events {
-		reflect.ValueOf(agg).Interface().(domain.InnerApplier).InnerApply(e)
+		reflect.ValueOf(agg).Interface().(domain.Replayer).Replay(e)
 	}
 	return agg, nil
 }
@@ -77,7 +77,7 @@ func (g genericIDRepository[T, TID]) GetById(id TID) (T, error) {
 	}
 	agg := g.createInstance()
 	for _, e := range events {
-		reflect.ValueOf(agg).Interface().(domain.InnerApplier).InnerApply(e)
+		reflect.ValueOf(agg).Interface().(domain.Replayer).Replay(e)
 	}
 	return agg, nil
 }

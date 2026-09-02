@@ -1,4 +1,4 @@
-package sample_domain
+package example
 
 import (
 	cqrs "github.com/iamkoch/conqueress"
@@ -38,9 +38,8 @@ func (i InventoryCommandHandlers) HandleRenameInventoryItem(cmd cqrs.Command) er
 	if err != nil {
 		return err
 	}
-	expectedVersion := inventoryItem.Version()
 	inventoryItem.Rename(item.NewName)
-	err = i.repository.Save(inventoryItem, expectedVersion)
+	err = i.repository.Save(inventoryItem, inventoryItem.Version())
 	if err != nil {
 		return err
 	}
