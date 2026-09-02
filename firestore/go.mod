@@ -4,7 +4,7 @@ go 1.25.0
 
 require (
 	cloud.google.com/go/firestore v1.25.0
-	github.com/iamkoch/conqueress v0.1.1
+	github.com/iamkoch/conqueress v0.2.0
 	github.com/iamkoch/ensure v1.0.0
 	github.com/smartystreets/goconvey v1.8.1
 	github.com/stretchr/testify v1.12.1

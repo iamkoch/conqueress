@@ -40,8 +40,8 @@ github.com/googleapis/gax-go/v2 v2.23.0 h1:Tchl7qkvE7Ip3y+ztvNufYFvkfqTe7NfLTYGI
 github.com/googleapis/gax-go/v2 v2.23.0/go.mod h1:rBQKOVJCdb8IFEzg+FCwlt1LP/xMDGuqUXhUG+XMXEg=
 github.com/gopherjs/gopherjs v1.21.0 h1:5HEGrz+XhpCchubMGzuyLuGoCTlL/yCT7sGsT5Se/dw=
 github.com/gopherjs/gopherjs v1.21.0/go.mod h1:R2HIOen3IzYSzvmvkeD8WOfiLN9wueR/T5Y+6z326Ck=
-github.com/iamkoch/conqueress v0.1.1 h1:fIh/Y/xeQmPShP4zo5YH0mFATu9iBpEry4wtGmV5X8k=
-github.com/iamkoch/conqueress v0.1.1/go.mod h1:O+fVZDjngQxXuPXDYlwkXHa76pOx5QIb94QHNLEXSvw=
+github.com/iamkoch/conqueress v0.2.0 h1:PRbte6czEyRxAAK02TqxKWv1vOHy8aLs9BLo6+4qNXw=
+github.com/iamkoch/conqueress v0.2.0/go.mod h1:O+fVZDjngQxXuPXDYlwkXHa76pOx5QIb94QHNLEXSvw=
 github.com/iamkoch/ensure v1.0.0 h1:gKVynFfBTsbH7CEyiUc/kBZRDnh+eX+fNaIC7NLMHw0=
 github.com/iamkoch/ensure v1.0.0/go.mod h1:4WWXoqsh453l9ispJtBBYZ+5MZOxG2crHeXFYGifKc0=
 github.com/jtolds/gls v4.20.0+incompatible h1:xdiiI2gbIgH/gLH7ADydsJ1uDOEzR8yvV7C0MuV77Wo=
